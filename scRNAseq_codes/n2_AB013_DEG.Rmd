@@ -1,0 +1,1379 @@
+---
+title: "n2 AB013: DEG and cluster ED"
+author: "Elisa Balmas PhD"
+date: "2025-08-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+library(plotly)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+
+dir.create(file.path("Output","DEG"))#create forders MONOCLE
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "heatmap"))
+dir.create(file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "GO"))
+
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_GO<-file.path("Output","DEG", format(Sys.Date(), "%y%m%d"), "GO", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scratch="scratch/"
+
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+load(paste0(getwd(),"/scratch/seurat_monocle_AB013.RData"))
+load(paste0(getwd(),"/scratch/seurat_monocle_iPS2seq.RData"))
+
+```
+
+#####combine seurat UMAPS and lables
+
+```{r}
+####combine UMAPS
+seurat_AB013 <- FindVariableFeatures(seurat_AB013, selection.method = "vst", nfeatures = 8000)
+seurat_AB013 =ScaleData(seurat_AB013)
+seurat_AB013 =RunPCA(seurat_AB013 , npcs = 30)
+DimPlot(seurat_AB013, group.by = "monocle_clusters", label = F)
+
+seurat_hpsc=FindVariableFeatures(seurat_hpsc, selection.method = "vst", nfeatures = 8000)
+seurat_hpsc =ScaleData(seurat_hpsc)
+seurat_hpsc =RunPCA(seurat_hpsc , npcs = 30)
+DimPlot(seurat_hpsc, group.by = "monocle_clusters", label = F)
+
+# Find transfer anchors
+anchors <- FindTransferAnchors(reference = seurat_hpsc, 
+                               query = seurat_AB013, 
+                               normalization.method = "LogNormalize", 
+                               #features = VariableFeatures(object = seurat_hpsc),
+    reference.assay = "originalexp", query.assay = "originalexp", reduction = "pcaproject",
+                               #features="PCA",
+                               dims = 1:30)
+
+# Transfer labels from reference to query
+predictions <- TransferData(anchorset = anchors, 
+                            refdata = seurat_hpsc$monocle_clusters, 
+                            dims = 1:30)
+predictions$libID=rownames(predictions)
+
+predictions=predictions%>%select(predicted.id,libID)%>%dplyr::rename(predicted_hpsc=predicted.id)
+
+cell_metadata=cell_metadata%>%right_join(predictions, by="libID")
+cds@colData$predicted_hpsc=predictions$predicted_hpsc
+
+hpsc_clust=meta_hpsc%>%
+  group_by(monocle_clusters,assigned_cell_type,cell_type_short) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  arrange(monocle_clusters, desc(n))
+
+hpsc_clust=hpsc_clust%>%rename(predicted_hpsc=monocle_clusters,cell_type_short_hpsc=cell_type_short,cell_type_hpsc=assigned_cell_type)%>%
+  select(-n)
+
+cell_metadata=cell_metadata%>%left_join(hpsc_clust, by="predicted_hpsc")
+cds@colData$cell_type_hpsc=cell_metadata$cell_type_hpsc
+cds@colData$cell_type_short_hpsc=cell_metadata$cell_type_short_hpsc
+
+meta=as.data.frame(cds@colData@listData)
+stat_filename = paste0(fname_prefix_R, "_meta.csv")
+write.csv(meta, stat_filename, quote = F, row.names = T, sep=",")
+
+# Add the predicted cluster annotations to the query metadata
+seurat_AB013 <- AddMetaData(object = seurat_AB013, metadata = cell_metadata)
+
+DimPlot(seurat_AB013, group.by = "monocle_clusters", label = T)
+DimPlot(seurat_AB013, group.by = "predicted_hpsc", label = F)
+DimPlot(seurat_AB013, group.by = "cell_type_short_hpsc", label = T)
+DimPlot(seurat_AB013, group.by = "cell_type_hpsc", label = T)
+
+
+DimPlot(seurat_hpsc, group.by = "assigned_cell_type", label = F)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_iPS2seq.pdf"),
+    width = 8,
+    height = 4)
+
+DimPlot(seurat_hpsc, group.by = "cell_type_short", label = F)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_iPS2seq_short.pdf"),
+    width = 8,
+    height = 4)
+
+plot_feature=c("monocle_clusters","predicted_hpsc","cell_type_short_hpsc","cell_type_hpsc","Phase")
+
+for (feature in plot_feature) {
+  
+  p <- ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes_string(color = feature), size = 0.8,alpha=1) +
+    labs(
+      x = "UMAP 1",
+      y = "UMAP 2",
+      title = feature
+    ) +
+    scale_color_manual(name = "monocle",
+                        values=c("grey","#f0E442","#0072B2","#D55E00","lightblue")) +
+    facet_grid(~medium)
+  
+  ggsave(
+    filename = paste0(fname_prefix_UMAP, "_", "UMAP_", feature, "_predictions_iPS2seq.pdf"),
+    plot = p,
+    width = 8,
+    height = 4
+  )
+}
+
+meta$predicted_cell_type_short= meta$cell_type_short_hpsc
+meta$predicted_cell_type_short <- dplyr::recode(meta$predicted_cell_type_short,
+                                                 "S1 PSC"="iPSC-N",
+                                                 "S2 P-PSC"="iPSC-P",
+                                                 "S2 PSC-1"="iPSC-1",
+                                                 "S2 PSC-P"="iPSC-M",
+                                                "S2 PSC"="iPSC-2")
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = predicted_cell_type_short), size = 0.8,alpha=1) +
+    labs(
+      x = "UMAP 1",
+      y = "UMAP 2",
+      title = "Predicted clusters from iPS2-seq"
+    ) +
+    scale_color_manual(name = "iPS2-seq clusters",
+                        values=c("#f0E442","#D55E00","#ff6db6","#009E73","#0072B2")) +
+    facet_grid(~medium)
+  
+  ggsave(
+    filename = paste0(fname_prefix_UMAP, "_", "UMAP_", feature, "_predictions_iPS2seq.pdf"),
+    width = 8,
+    height = 4)
+  
+  ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = predicted_cell_type_short), size = 0.8,alpha=0.7) +
+    labs(
+      x = "UMAP 1",
+      y = "UMAP 2",
+      title = "Predicted clusters from iPS2-seq"
+    ) +
+    scale_color_manual(name = "iPS2-seq clusters",
+                        values=c("#f0E442","#D55E00","#ff6db6","#009E73","#0072B2")) #+
+    #facet_grid(~medium)
+  
+  ggsave(
+    filename = paste0(fname_prefix_UMAP, "_", "UMAP_", feature, "_predictions_iPS2seq_single.pdf"),
+    width = 5,
+    height = 4)
+
+Rdata_filename = paste0(fname_prefix_R, "_monocle_seurat_cds_lable_prediction.RData")
+save(cell_metadata,counts,cds,meta,original_counts,seurat_AB013,
+     file = Rdata_filename)
+```
+
+####DEG lists
+
+```{r}
+
+seurat=seurat_AB013
+Idents(seurat) <- "monocle_clusters"
+DEG_all_clusters <- FindAllMarkers(seurat,only.pos = FALSE,
+  test.use = "wilcox",
+  logfc.threshold = 0,
+  min.pct = 0,
+  min.cells.feature = 1,
+  min.cells.group  = 1,
+  features = rownames(seurat))
+DEG_all_clusters$genes=rownames(DEG_all_clusters)#more genes because each gene can be associated to more than one cluster
+
+DEG_cl1vs2 <- FindMarkers(
+  seurat,only.pos = FALSE,
+  ident.1 = "1", ident.2 = "2",
+  test.use = "wilcox",
+  logfc.threshold = 0,
+  min.pct = 0,
+  min.cells.feature = 1,
+  min.cells.group  = 1,
+  features = rownames(seurat))
+DEG_cl1vs2$genes=rownames(DEG_cl1vs2)
+DEG_cl1vs2=DEG_cl1vs2%>%select(genes,p_val_adj,avg_log2FC)
+colnames(DEG_cl1vs2) <- c("geneID", "q_value_1vs2", "logFC_1vs2")
+
+DEG_cl4vs3=FindMarkers(seurat,only.pos = FALSE, ident.1 = "4", ident.2 = "3",
+  test.use = "wilcox",
+  logfc.threshold = 0,
+  min.pct = 0,
+  min.cells.feature = 1,
+  min.cells.group  = 1,
+  features = rownames(seurat))
+DEG_cl4vs3$genes=rownames(DEG_cl4vs3)
+DEG_cl4vs3=DEG_cl4vs3%>%select(genes,p_val_adj,avg_log2FC)
+colnames(DEG_cl4vs3) <- c("geneID", "q_value_4vs3", "logFC_4vs3")
+
+DEG_cl3vsall=FindMarkers(seurat, only.pos = FALSE, ident.1 = "3", ident.2 = c("1","2","4"),
+  test.use = "wilcox",
+  logfc.threshold = 0,
+  min.pct = 0,
+  min.cells.feature = 1,
+  min.cells.group  = 1,
+  features = rownames(seurat))
+DEG_cl3vsall$genes=rownames(DEG_cl3vsall)
+DEG_cl3vsall=DEG_cl3vsall%>%select(genes,p_val_adj,avg_log2FC)
+colnames(DEG_cl3vsall) <- c("geneID", "q_value_3vsall", "logFC_3vsall")
+
+
+DEG_cl4vsall=FindMarkers(seurat,only.pos = FALSE, ident.1 = "4", ident.2 = c("1","2","3"),
+  test.use = "wilcox",
+  logfc.threshold = 0,
+  min.pct = 0,
+  min.cells.feature = 1,
+  min.cells.group  = 1,
+  features = rownames(seurat))
+DEG_cl4vsall$genes=rownames(DEG_cl4vsall)
+DEG_cl4vsall=DEG_cl4vsall%>%select(genes,p_val_adj,avg_log2FC)
+colnames(DEG_cl4vsall) <- c("geneID", "q_value_4vsall", "logFC_4vsall")
+
+de_stats<-DEG_cl1vs2%>%
+  left_join(DEG_cl4vs3, by =c("geneID"))%>%
+  left_join(DEG_cl3vsall, by =c("geneID"))%>%
+  left_join(DEG_cl4vsall, by =c("geneID"))
+
+de_stats$dup=duplicated(de_stats$geneID)
+de_stats=subset(de_stats,de_stats$dup!=T)%>%dplyr::select(-dup)
+
+analysis_clusters=de_stats
+
+stat_filename = paste0(fname_prefix_csv, "_complete_gene_reg_by_clusters.csv")
+write.csv(analysis_clusters, stat_filename, quote = F, row.names = T, sep=",")
+
+```
+
+####add directions
+
+```{r}
+#Set the significance level cutoff
+sig_level <- 0.01
+#Set a fold-change cutoff
+fc_level <- log2(2)
+fc_level2 <- (log2(2))*-1
+###################################
+N=20
+list=c("1vs2","4vs3","3vsall","4vsall")
+
+for (i in list) {
+  cluster_name <- paste0("clust", i)
+  
+  # Create column names dynamically
+  logFC_col <- paste0("logFC_", i)
+  q_value_col <- paste0("q_value_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  
+  # Apply thresholding logic
+  de_stats[[treshold_col]] <- ifelse(de_stats[[logFC_col]] >= fc_level & de_stats[[q_value_col]] <= sig_level, "up",
+                                      ifelse(de_stats[[logFC_col]] <= fc_level2 & de_stats[[q_value_col]] <= sig_level, "down", "other"))
+  
+  de_stats[[Log10pvalue_col]] <- -log10(de_stats[[q_value_col]]+1e-305)
+}
+
+N <- 25
+contrasts <- c("1vs2","4vs3","3vsall","4vsall")
+
+for (i in contrasts) {
+  logFC_col       <- paste0("logFC_", i)
+  q_value_col     <- paste0("q_value_", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  to_show_col     <- paste0("to_show_cl", i)
+
+  # ensure -log10(p) column exists
+  de_stats[[Log10pvalue_col]] <- -log10(de_stats[[q_value_col]] + 1e-305)
+
+  # boolean masks
+  up_idx   <- de_stats[[logFC_col]] >=  fc_level & de_stats[[q_value_col]] <= sig_level
+  down_idx <- de_stats[[logFC_col]] <= fc_level2 & de_stats[[q_value_col]] <= sig_level
+
+  # pick top N in each set by significance
+  up_top   <- order(de_stats[[Log10pvalue_col]], decreasing = TRUE)[up_idx][seq_len(min(N, sum(up_idx)))]
+  down_top <- order(de_stats[[Log10pvalue_col]], decreasing = TRUE)[down_idx][seq_len(min(N, sum(down_idx)))]
+
+  # vector of which rows to show
+  show_idx <- logical(nrow(de_stats))
+  show_idx[up_top] <- TRUE
+  show_idx[down_top] <- TRUE
+
+  # NEW COLUMN: gene name if in top/bottom set, "" otherwise
+  de_stats[[to_show_col]] <- ifelse(show_idx, de_stats$geneID, "")
+}
+stat_filename = paste0(fname_prefix_csv, "_gene_reg_with_directions.csv")
+write.csv(de_stats, stat_filename, quote = F, row.names = T, sep=",")
+
+###########
+de_stats=de_stats%>% distinct(geneID, .keep_all = TRUE)#eliminate duplicates
+
+# Loop through clusters to make all the volcano plots in bulk than use the one below to make specific ones
+contrasts <- c("1vs2","4vs3","3vsall","4vsall")
+
+for (i in contrasts)  {
+  logFC_col <- paste0("logFC_", i)
+  treshold_col <- paste0("treshold_cl", i)
+  Log10pvalue_col <- paste0("Log10pvalue_cl", i)
+  q_value_col <- paste0("q_value_", i)
+  to_show_col <- paste0("to_show_cl", i)
+
+  volcano_plot <- ggplot(data = de_stats, aes(x = !!rlang::sym(logFC_col), y = !!rlang::sym(Log10pvalue_col))) +
+    geom_point(aes(colour = as.factor(!!rlang::sym(treshold_col))), size = 1.5) +
+    scale_colour_manual(values = c("up" = "red", "down" = "blue", "other" = "grey")) +
+     ggrepel::geom_text_repel(
+  data = de_stats %>%
+    filter(!!rlang::sym(q_value_col) < 0.05),
+  aes(label = !!rlang::sym(to_show_col)),
+  size = 3,
+  box.padding = unit(0.2, "lines"),
+  point.padding = unit(0.2, "lines"),
+  segment.color = "grey",
+  segment.size = 0.2,max.overlaps =100
+)+
+    theme(legend.position = "none") +
+    geom_hline(yintercept = (log10(sig_level) * -1),linetype="dotted") +
+    geom_vline(xintercept = c(fc_level, fc_level2),linetype="dotted") +
+    xlim(c(-100, 80)) + ylim(c(0, 350)) +
+    xlab("log2 fold change") + ylab("-Log10 adj p-value")+
+  annotate("text", x = -60, y = 350, label = paste("comparison cl ", i), col = "black", size = 4, hjust = 1, vjust = 1)# +
+    # Add "other clusters" on the top left for clusters other than the current one
+   # annotate("text", x = -4, y = 200, label = "Other Clusters", col = "black", size = 4, hjust = 0, vjust = 1)
+
+
+  ggsave(
+    filename = paste0(fname_prefix_dotplot, "_cl", i, ".pdf"),
+    plot = volcano_plot,
+    width = 8,
+    height = 6
+  )
+}
+```
+
+###run clusterprofiler
+#GO analysis on clusters
+
+```{r}
+####make gene list to study
+
+library(clusterProfiler)
+library(enrichplot)
+library(org.Hs.eg.db)
+
+genes_1vs2_cl1=subset(de_stats,de_stats$treshold_cl1vs2=="up")
+genes_1vs2_cl2=subset(de_stats,de_stats$treshold_cl1vs2=="down")
+genes_4vs3_cl4=subset(de_stats,de_stats$treshold_cl4vs3=="up")
+genes_4vs3_cl3=subset(de_stats,de_stats$treshold_cl4vs3=="down")
+genes_3vsall=subset(de_stats,de_stats$treshold_cl3vsall=="up")
+genes_4vsall=subset(de_stats,de_stats$treshold_cl4vsall=="up")
+
+genes <- genes_1vs2_cl1$logFC_1vs2
+names(genes) <- genes_1vs2_cl1$geneID
+genes <- sort(genes, decreasing = TRUE)
+genes_1vs2_cl1=genes
+
+genes <- genes_1vs2_cl2$logFC_1vs2
+names(genes) <- genes_1vs2_cl2$geneID
+genes <- sort(genes, decreasing = F)
+genes_1vs2_cl2=genes
+
+genes <- genes_4vs3_cl4$logFC_4vs3
+names(genes) <- genes_4vs3_cl4$geneID
+genes <- sort(genes, decreasing = T)
+genes_4vs3_cl4=genes
+
+genes <- genes_4vs3_cl3$logFC_4vs3
+names(genes) <- genes_4vs3_cl3$geneID
+genes <- sort(genes, decreasing = F)
+genes_4vs3_cl3=genes
+
+genes <- genes_3vsall$logFC_3vsall
+names(genes) <- genes_3vsall$geneID
+genes <- sort(genes, decreasing = T)
+genes_3vsall=genes
+
+genes <- genes_4vsall$logFC_4vsall
+names(genes) <- genes_4vsall$geneID
+genes <- sort(genes, decreasing = T)
+genes_4vsall=genes
+
+gene_sets <- list(
+  "1vs2_up"    = genes_1vs2_cl1,
+  "1vs2_down"  = genes_1vs2_cl2,
+  "4vs3_up"    = genes_4vs3_cl4,
+  "4vs3_down"  = genes_4vs3_cl3,
+  "3vsall_up"  = genes_3vsall,
+  "4vsall_up"  = genes_4vsall
+)
+
+
+#background universe = all detectable symbols in de_stats
+univ_map <- suppressMessages(bitr(unique(na.omit(de_stats$geneID)),
+                                  fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db))
+universe_entrez <- unique(univ_map$ENTREZID)
+
+#set list ego and GO_list to store results
+ego_list <- list()
+GO_list  <- list()
+
+for (nm in names(gene_sets)) {
+  syms <- unique(names(gene_sets[[nm]]))          # enrichGO needs symbols, not ranks
+  if (!length(syms)) next
+
+  id_map <- suppressMessages(bitr(syms, fromType="SYMBOL",
+                                  toType="ENTREZID", OrgDb=org.Hs.eg.db))
+  entrez <- unique(id_map$ENTREZID)
+  if (!length(entrez)) next
+
+  ego <- enrichGO(gene=entrez,
+                  OrgDb=org.Hs.eg.db,
+                  keyType="ENTREZID",
+                  ont="BP",
+                  universe=universe_entrez,
+                  pAdjustMethod="BH",
+                  pvalueCutoff=1, readable=TRUE)
+
+  ego_list[[nm]] <- ego
+  GO_list[[nm]]  <- as.data.frame(ego)
+}
+
+# 1) Write every GO table to CSV: GO_<name>.csv
+if (length(GO_list)) {
+  for (nm in names(GO_list)) {
+    if (is.null(GO_list[[nm]]) || !nrow(GO_list[[nm]])) next
+    # file <- file.path(out_dir, paste0(fname_prefix_GO, "_GO_", nm, ".csv"))
+    file <- paste0(fname_prefix_csv, "_GO_", nm, ".csv")
+    write.csv(GO_list[[nm]], file, row.names = FALSE)
+    message("Wrote: ", file)
+  }
+}
+
+# 2) Helper: safe save for ggplot objects
+save_plot <- function(plot_obj, filename, width=8, height=6) {
+  if (inherits(plot_obj, "ggplot")) {
+    ggsave(filename = filename, plot = plot_obj, width = width, height = height)
+    message("Saved plot: ", filename)
+  } else {
+    message("Skipping (not a ggplot): ", filename)
+  }
+}
+
+# 3) Make dotplots and barplots for each ego in ego_list
+if (length(ego_list)) {
+  for (nm in names(ego_list)) {
+    ego <- ego_list[[nm]]
+    # skip empty / NULL results
+    if (is.null(ego)) next
+    res_df <- tryCatch(as.data.frame(ego), error = function(e) NULL)
+    if (is.null(res_df) || !nrow(res_df)) next
+
+    # Dotplot (top 15 by default)
+    p_dot <- tryCatch(dotplot(ego, showCategory = 15, x = "Count"),
+                      error = function(e) NULL)
+    save_plot(p_dot, paste0(fname_prefix_GO, "_dotplot_GO_", nm, ".pdf"),
+              width = 8, height = 8)
+
+    # Barplot (FoldEnrichment is a valid x in enrichplot::barplot)
+    p_bar <- tryCatch(barplot(ego, x = "FoldEnrichment", showCategory = 15),
+                      error = function(e) NULL)
+    save_plot(p_bar, paste0(fname_prefix_GO, "_bar_GO_", nm, ".pdf"),
+              width = 8, height = 4)
+  }
+}
+
+#dotplot(ego_list[["3vsall_up"]], showCategory = 15, orderBy ="FoldEnrichment",x="Count")
+#ggsave(filename = paste0(fname_prefix_GO, "_", "_dotplot_GO_3vsall_up.pdf"),
+   #  width = 8, height = 8)
+
+#barplot(ego_list[["1vs2_up"]],x="FoldEnrichment")
+#ggsave(filename = paste0(fname_prefix_GO, "_", "_bar_GO_1vs2_cl1.pdf"),
+  #   width = 8, height = 4)
+
+Rdata_filename = paste0(fname_prefix_GO, "_GO_analysis_clusters.RData")
+save(gene_sets,ego_list,GO_list,de_stats,
+     file = Rdata_filename)
+
+
+```
+###run clusterprofiler
+#GSEA analysis on clusters
+
+```{r}
+####make gene list to study
+
+library(clusterProfiler)
+library(enrichplot)
+library(org.Hs.eg.db)
+library(enrichplot)
+library(DOSE)
+
+set_min_n_genes=5
+
+genes_1vs2=subset(de_stats,de_stats$treshold_cl1vs2!="other")
+genes_4vs3=subset(de_stats,de_stats$treshold_cl4vs3!="other")
+genes_3vsall=subset(de_stats,de_stats$treshold_cl3vsall!="other")
+genes_4vsall=subset(de_stats,de_stats$treshold_cl4vsall!="other")
+
+genes <- genes_1vs2$logFC_1vs2
+names(genes) <- genes_1vs2$geneID
+genes <- sort(genes, decreasing = TRUE)
+genes_1vs2=genes
+
+genes <- genes_4vs3$logFC_4vs3
+names(genes) <- genes_4vs3$geneID
+genes <- sort(genes, decreasing = T)
+genes_4vs3=genes
+
+genes <- genes_3vsall$logFC_3vsall
+names(genes) <- genes_3vsall$geneID
+genes <- sort(genes, decreasing = T)
+genes_3vsall=genes
+
+genes <- genes_4vsall$logFC_4vsall
+names(genes) <- genes_4vsall$geneID
+genes <- sort(genes, decreasing = T)
+genes_4vsall=genes
+
+gene_sets_GSEA <- list(
+  "1vs2"    = genes_1vs2,
+  "4vs3"    = genes_4vs3,
+  "3vsall"  = genes_3vsall,
+  "4vsall"  = genes_4vsall
+)
+
+# Ensure each element is a named numeric vector (values = logFC, names = SYMBOL)
+stopifnot(all(sapply(gene_sets_GSEA, function(x) is.numeric(x) && !is.null(names(x)))))
+
+# Map SYMBOL -> ENTREZ, then rebuild ranked vectors in ENTREZ space
+symbol_to_entrez <- suppressMessages(bitr(
+  unique(unlist(lapply(gene_sets_GSEA, names))),
+  fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db
+))
+
+gsea_list   <- list()
+GSEA_tables <- list()
+
+for (nm in names(gene_sets_GSEA)) {
+  ranks_sym <- gene_sets_GSEA[[nm]]
+
+  # join to map to ENTREZ
+  df <- data.frame(SYMBOL = names(ranks_sym), rank = as.numeric(ranks_sym))
+  df2 <- merge(df, symbol_to_entrez, by="SYMBOL")
+  if (!nrow(df2)) next
+
+  # deduplicate ENTREZ if necessary (keep max |rank|)
+  df2 <- df2[order(-abs(df2$rank)), ]
+  df2 <- df2[!duplicated(df2$ENTREZID), ]
+
+  ranks_entrez <- df2$rank
+  names(ranks_entrez) <- df2$ENTREZID
+  ranks_entrez <- sort(ranks_entrez, decreasing = TRUE)
+
+  gsea <- gseGO(geneList      = ranks_entrez,
+                OrgDb         = org.Hs.eg.db,
+                keyType       = "ENTREZID",
+                ont           = "BP",
+                minGSSize     = set_min_n_genes,#place this automatic
+                maxGSSize     = 500,
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 1,
+                nPermSimple = 10000,# readable=TRUE,
+                verbose       = FALSE, by = "fgsea")
+  
+gsea_readable <- setReadable(gsea, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
+
+  gsea_list[[nm]]   <- gsea
+  GSEA_tables[[nm]] <- as.data.frame(gsea_readable)
+}
+
+# filter significant terms
+# Make a new list of GSEA results filtered by significance
+gsea_sig_list <- lapply(gsea_list, function(gsea_obj) {
+  if (is.null(gsea_obj)) return(NULL)
+  df <- gsea_obj@result
+  if (is.null(df) || !nrow(df)) return(NULL)
+  
+  # filter by adjusted p-value < 0.05
+  df_sig <- dplyr::filter(df, p.adjust < 0.05)
+  
+  # replace the result slot with filtered df
+  gsea_obj@result <- df_sig
+  gsea_obj
+})
+
+# 1) Write every GO table to CSV: GO_<name>.csv
+if (length(GSEA_tables)) {
+  for (nm in names(GSEA_tables)) {
+    if (is.null(GSEA_tables[[nm]]) || !nrow(GSEA_tables[[nm]])) next
+    # file <- file.path(out_dir, paste0(fname_prefix_GO, "_GO_", nm, ".csv"))
+    file <- paste0(fname_prefix_csv, "_GSEA_", nm, ".csv")
+    write.csv(GSEA_tables[[nm]], file, row.names = FALSE)
+    message("Wrote: ", file)
+  }
+}
+
+# Helper: save ggplot if it exists
+.save_plot <- function(p, file, w=8, h=10) {
+  if (!is.null(p) && inherits(p, "ggplot")) {
+    ggsave(filename = file, plot = p, width = w, height = h)
+    message("Saved: ", file)
+  }
+}
+
+# Make a dotplot per GSEA result in gsea_list
+plot_gsea_dotplots <- function(gsea_list, fname_prefix, show_k = 10, width=8, height=10) {
+  if (!length(gsea_list)) {
+    message("gsea_list is empty.")
+    return(invisible(NULL))
+  }
+
+  for (nm in names(gsea_list)) {
+    g <- gsea_list[[nm]]
+    # Skip NULL or empty results
+    df <- tryCatch(as.data.frame(g), error = function(e) NULL)
+    if (is.null(df) || !nrow(df)) {
+      message("Skipping ", nm, " (no terms).")
+      next
+    }
+
+    k <- min(show_k, nrow(df))
+
+    # GSEA-friendly dotplot: split by .sign for up/down, order by NES
+    p <- tryCatch(
+      dotplot(g, showCategory = k, split = ".sign", orderBy = "NES") +
+        facet_grid(. ~ .sign),
+      error = function(e) { message("Plot error in ", nm, ": ", e$message); NULL }
+    )
+
+    out_pdf <- paste0(fname_prefix, "_GSEA_", nm, "_dotplot.pdf")
+    .save_plot(p, out_pdf, w = width, h = height)
+  }
+}
+
+plot_gsea_dotplots(gsea_list, fname_prefix = fname_prefix_GO, show_k = 15)
+
+
+# Vector of target GO IDs ###ID studied before
+go_ids <- c("GO:0042551","GO:0007492","GO:0007498") # 
+
+# Function: loop through GO IDs for a given contrast
+save_gsea_plots <- function(gsea_res, contrast_name, go_ids, prefix, width=8, height=6) {
+  for (go_id in go_ids) {
+    if (go_id %in% gsea_res@result$ID) {
+      p <- gseaplot2(gsea_res, geneSetID = go_id, title = go_id)
+      out_file <- paste0(prefix, "_", contrast_name, "_", gsub(":", "-", go_id), ".pdf")
+      ggsave(out_file, plot = p, width = width, height = height)
+      message("Saved: ", out_file)
+    } else {
+      message("GO term ", go_id, " not found in ", contrast_name)
+    }
+  }
+}
+
+# Example usage:
+save_gsea_plots(gsea_list[["4vsall"]], "4vsall", go_ids, fname_prefix_GO)
+save_gsea_plots(gsea_list[["3vsall"]], "3vsall", go_ids, fname_prefix_GO)
+save_gsea_plots(gsea_list[["1vs2"]],  "1vs2",  go_ids, fname_prefix_GO)
+save_gsea_plots(gsea_list[["4vs3"]], "4vs3", go_ids, fname_prefix_GO)
+
+
+# Vector of target GO IDs for plotting
+#go_ids <- c("GO:0042551","GO:0007492","GO:0007498")#neuron migration
+
+# Loop over and plot#
+#for (go_id in go_ids) {
+ # if (go_id %in% gsea_list[["3vsall"]]@result$ID) {
+  #  print(gseaplot2(gsea_list[["3vsall"]], geneSetID = go_id, title = go_id))
+  #} else {
+   # message(paste("GO term", go_id, "not found in results."))
+  #}
+#}
+
+
+#dotplot(gsea, showCategory = 10, split = ".sign",orderBy = "enrichmentScore") + facet_grid(.~.sign)
+#ggsave(filename = paste0(fname_prefix_ATAC_GO, "_", "_GSEA.pdf"),
+ #    width = 8, height = 8)
+
+### Plotting GSEA results
+#dotplot(gsea_list[["3vsall"]], showCategory = 10, split = ".sign",orderBy = "enrichmentScore") + facet_grid(.~.sign)
+#ggsave(filename = paste0(fname_prefix_GO, "_", "_GSEA.pdf"),
+ #    width = 8, height = 8)
+
+dotplot(gsea_sig_list[["1vs2"]], showCategory = 10, split = ".sign", orderBy = "NES") +
+  facet_grid(. ~ .sign)
+ggsave(filename = paste0(fname_prefix_GO, "_1vs2_GSEA_sig.pdf"),
+       width = 8, height = 8)
+
+dotplot(gsea_sig_list[["3vsall"]], showCategory = 10, split = ".sign", orderBy = "NES") +
+  facet_grid(. ~ .sign)
+ggsave(filename = paste0(fname_prefix_GO, "_3vsall_GSEA_sig.pdf"),
+       width = 8, height = 8)
+
+dotplot(gsea_sig_list[["4vsall"]], showCategory = 10, split = ".sign", orderBy = "NES") +
+  facet_grid(. ~ .sign)
+ggsave(filename = paste0(fname_prefix_GO, "_4vsall_GSEA_sig.pdf"),
+       width = 8, height = 8)
+
+dotplot(gsea_sig_list[["4vs3"]], showCategory = 10, split = ".sign", orderBy = "NES") +
+  facet_grid(. ~ .sign)
+ggsave(filename = paste0(fname_prefix_GO, "_4vs3_GSEA_sig.pdf"),
+       width = 8, height = 8)
+
+
+Rdata_filename = paste0(fname_prefix_GO, "_GSEA_analysis_clusters.RData")
+save(gene_sets_GSEA,gsea_list,GSEA_tables,de_stats,
+     file = Rdata_filename)
+
+```
+
+####add signatures
+
+```{r}
+seurat_obj=seurat_AB013
+# --- Define gene sets (HGNC). Keep concise but informative. ---
+gs <- list(
+  # --- Pluripotency axes ---
+  core_pluripotency = c("POU5F1","NANOG","SOX2","PRDM14","DPPA2","DPPA4","DNMT3A","DNMT3B","ZFP42"),
+  naive_pluripotency = c("KLF17","KLF4","TFCP2L1","DNMT3L","DPPA3","TBX3","ESRRB","SUSD2"),
+  formative_pluripotency = c("OTX2","DPPA2","DPPA4","POU3F1","ZIC2","ZIC3","SOX3"),  # OCT6 = POU3F1
+  primed_pluripotency = c("OTX2","FGF5","ZIC1","ZIC3","ZIC5","SOX11","DNMT3A","DNMT3B","CD24","EPCAM"),
+  # --- Epithelial vs EMT/stress tone ---
+  epithelial = c("CDH1","EPCAM","CLDN6","CLDN3","TJP1","ITGA6","ITGB1"),
+  emt_stress = c("VIM","CD44","ITGA5","ITGAV","SNAI1","SNAI2","ZEB1","ZEB2","TWIST1","MALAT1","FN1"),
+  # --- Pathways / signaling readouts ---
+  activin_nodal = c("NODAL","LEFTY1","LEFTY2","CER1","SMAD7","TDGF1"),
+  bmp_axis = c("BMP4","ID1","ID2","ID3","MSX1","DLX5"),
+  fgf_erk = c("FGF2","ETV4","ETV5","SPRY2","DUSP6"),
+  wnt_beta_catenin = c("WNT3","WNT3A","AXIN2","LEF1","TCF7","DKK1"),
+  notch_axis = c("HES1","HES5"),
+  hippo_yap = c("CTGF","CYR61","AMOTL2"),
+  # --- Lineage priming / early fate modules ---
+  neuroectoderm = c("SOX1","PAX6","LHX2","HES1","HES5","OTX1","NES"),
+  neural_border_crest_placodal = c("TFAP2A","TFAP2C","PAX3","PAX7","SOX9","SOX10","DLX5","DLX6","MSX1","GATA2","GATA3","SIX1","EYA1","DACH1","DACH2","KRT8","KRT18","KRT19"),
+  mesendoderm = c("TBXT","EOMES","MIXL1","GSC","NODAL","FGF8"),
+  cardiac_mesoderm_early = c("MESP1","PDGFRA","KDR","ISL1","HAND1","HAND2","GATA4","NKX2-5","TBX5","MEF2C"),
+  endoderm = c("SOX17","FOXA2","GATA6","HHEX","CER1"),
+  extraembryonic_amnion_te = c("TFAP2C","GATA2","GATA3","KRT7","PEG10","TACSTD2","CGA","CGB","ISL1","KRT8","KRT18","KRT19"),
+  # --- Cell cycle (Seurat uses S.Score / G2M.Score; include explicit sets if desired) ---
+  cellcycle_s = c("MCM5","PCNA","TYMS","FEN1","MCM2","MCM4","RRM1","UNG","GINS2","MCM6","CDCA7","DTL","PRIM1","UHRF1","HELLS","RFC2","RPA2","NASP","RAD51","CHEK1","ORC6","MCM3","MCM7","MLF1IP","BRIP1","E2F8"),
+  cellcycle_g2m = c("HMGB2","CDK1","NUSAP1","UBE2C","BIRC5","TPX2","TOP2A","NDC80","CKS2","NUF2","CKS1B","MKI67","TMPO","CENPF","TACC3","SMC4","CCNB2","CKAP2L","CKAP2","AURKB","BUB1","KIF11","ANP32E","TUBB4B","GTSE1","KIF20B","HJURP","CDCA3","CDC20","TTK","CDC45","CDC6","EXO1","TIPIN","DSCC1","BLM","CASP8AP2","USP1","CLSPN","POLA1","CHAF1B","BRCA1","EXOSC2","USP16","POLD3","MSH2","ATAD2","RAD51AP1","RRM2","CDC45"),
+  # --- Translation / ribosome & nucleolar stress (tone only; not a "score = quality") ---
+  ribosome_tone = c("RPLP0","RPL3","RPL5","RPL7","RPL11","RPL13A","RPL23A","RPS3","RPS6","RPS8","RPS12","RPS18","RPS27","NCL","FBL","NPM1","EIF4EBP1","MYC","DDIT4"),
+  # --- Stress responses ---
+  oxidative_stress = c("SOD2","PRDX1","PRDX2","TXN"),
+  er_upr = c("HSPA5","ATF4","DDIT3","XBP1","HSP90B1"),
+  dna_damage_p53 = c("TP53","CDKN1A","GADD45A"),
+  apoptosis_axis = c("BAX","BCL2","BCL2L11","PMAIP1"),
+  # --- Adhesion/surface (handy for sort validation) ---
+  adhesion_surface = c("PODXL","B3GALT5","EPCAM","SUSD2","CD24","ITGA6","ITGB1"))
+
+###example single add
+#seurat_AB013 <- AddModuleScore(seurat_AB013, features=gs[["core_pluripotency"]], name="core_pluripotency")
+#cds@colData$core_pluripotency=seurat_AB013@meta.data$core_pluripotency1
+
+fix_features <- function(object, genes) {
+  present <- intersect(genes, rownames(object))
+  if (length(present) == 0L) warning("No genes found from set: ", paste(head(genes, 5), collapse=", "))
+  present
+}
+
+# Compute module scores for every set in `gs`
+for (nm in names(gs)) {
+  feats <- fix_features(seurat_AB013, gs[[nm]])
+  # skip empty sets
+  if (length(feats) == 0L) next
+  seurat_AB013 <- AddModuleScore(
+    object   = seurat_AB013,
+    features = list(feats),        # one set at a time
+    name     = paste0(nm, "_score")# Seurat will append "1"
+  )
+  # Move the created column <name>1 into a clean column <name>
+  raw_col <- paste0(nm, "_score1")
+  if (raw_col %in% colnames(seurat_AB013@meta.data)) {
+    seurat_AB013@meta.data[[nm]] <- seurat_AB013@meta.data[[raw_col]]
+    # optional: drop the generated column
+    seurat_AB013@meta.data[[raw_col]] <- NULL
+  }
+}
+
+common_cells <- intersect(colnames(seurat_AB013), colnames(cds))
+if (length(common_cells) == 0L) stop("No overlapping cells between Seurat and cds.")
+
+for (nm in names(gs)) {
+  if (nm %in% colnames(seurat_AB013@meta.data)) {
+    vec <- seurat_AB013@meta.data[common_cells, nm, drop=TRUE]
+    colData(cds)[common_cells, nm] <- vec
+  }
+}
+
+feat_to_plot <- c(names(gs))
+
+for (feat in feat_to_plot) {
+  if (!feat %in% colnames(colData(cds))) next
+  p <- plot_cells(
+    cds,
+    reduction_method   = "UMAP",
+    color_cells_by     = feat,
+    label_cell_groups  = TRUE,
+    show_trajectory_graph = FALSE
+  ) +
+    labs(title = feat, x = "UMAP 1", y = "UMAP 2") +
+    ggplot2::scale_color_viridis_c(option = "E")
+  ggsave(paste0(fname_prefix_dotplot_single, "_UMAP_", feat, ".pdf"), p, width = 4, height = 3)
+}
+```
+
+
+###show specific markers
+```{r}
+###makers cl1 vs 2
+plot_cells(cds,
+           genes = c("VIM","MALAT1","ID1","TPM1","NEBL","THY1","ROBO2","KRT18","CDH1","IGFBP2","LDHA","SLC2A1"),
+           label_cell_groups = FALSE,
+            show_trajectory_graph = FALSE)+ 
+     labs(x = "UMAP 1", y = "UMAP 2", title = "")+
+     scale_color_viridis(option="E", discrete=F)
+   ggsave(filename = paste0(fname_prefix_dotplot, "_", "UMAP_Cl1_2.pdf"),
+     width = 8, height = 6)
+   
+##score cell cycle
+   
+p_s  <- plot_cells(
+  cds,
+  reduction_method = "UMAP",
+  color_cells_by   = "S_score",
+  label_cell_groups = TRUE,
+  show_trajectory_graph = FALSE
+) + labs(x="UMAP 1", y="UMAP 2", title="S_score") +
+    scale_color_viridis_c(option = "E")
+
+p_g2m <- plot_cells(
+  cds,
+  reduction_method = "UMAP",
+  color_cells_by   = "G2M_score",
+  label_cell_groups = TRUE,
+  show_trajectory_graph = FALSE
+) + labs(x="UMAP 1", y="UMAP 2", title="G2M_score") +
+    scale_color_viridis_c(option = "E")
+
+# side-by-side
+p_comb <- p_s | p_g2m
+
+ggsave(paste0(fname_prefix_dotplot, "_UMAP_S_and_G2M.pdf"), p_comb, width = 12, height = 6)
+   
+####combine for figure
+
+plot_cells(cds,
+           genes = c("POU5F1","SOX2","NANOG","MKI67","VIM","LDHA","LRRC75A","ZIC1","UNC5D"),
+           label_cell_groups = FALSE,
+            show_trajectory_graph = FALSE)+ 
+     labs(x = "UMAP 1", y = "UMAP 2", title = "")+
+     scale_color_viridis(option="E", discrete=F)
+   ggsave(filename = paste0(fname_prefix_dotplot, "_", "UMAP_fig.pdf"),
+     width = 8, height = 6)
+   
+  plot_cells(cds,
+           genes = c("POU5F1","SOX2","NANOG","MKI67","ID1","LDHA","LRRC75A","ZIC1","UNC5D"),
+           label_cell_groups = FALSE,
+            show_trajectory_graph = FALSE)+ 
+     labs(x = "UMAP 1", y = "UMAP 2", title = "")+
+     scale_color_viridis(option="E", discrete=F)
+   ggsave(filename = paste0(fname_prefix_dotplot, "_", "UMAP_fig2.pdf"),
+     width = 8, height = 6)
+   
+   
+```
+####set up cluster names
+
+```{r}
+colData(cds)$assigned_cell_type <- as.character(clusters(cds))
+colData(cds)$assigned_cell_type_short <- as.character(clusters(cds))
+
+colData(cds)$assigned_cell_type <- dplyr::recode(colData(cds)$assigned_cell_type,
+                                                 "1"="iPSC active",
+                                                 "2"="iPSC starved",
+                                                 "3"="iPSC neuralized",
+                                                 "4"="iPSC mesodermal primed")
+
+
+colData(cds)$assigned_cell_type_short <- dplyr::recode(colData(cds)$assigned_cell_type_short,
+                                                 "1"="iPSC-1",
+                                                 "2"="iPSC-2",
+                                                 "3"="iPSC-N",
+                                                 "4"="iPSC-M")
+cell_type_levels=c("iPSC active","iPSC starved","iPSC neuralized","iPSC mesodermal primed")
+cell_type_short_levels=c("iPSC-1","iPSC-2","iPSC-N","iPSC-M")
+
+col_cl=c("#000000","#E69F00","#009E73","#ff6db6")
+
+ #"#56B4E9" "#f0E442" "#0072B2" "#D55E00" "#CC79A7" "#000000"
+
+col_tab=data.frame(monocle_clusters=c("1","2","3","4"),assigned_cell_type_short=cell_type_short_levels,assigned_cell_type=cell_type_levels,
+                   col=col_cl)
+
+meta=as.data.frame(cds@colData@listData)
+cell_metadata=meta
+stat_filename = paste0(fname_prefix_R, "_meta.csv")
+write.csv(meta, stat_filename, quote = F, row.names = T, sep=",")
+
+# Add the predicted cluster annotations to the query metadata
+seurat_AB013 <- AddMetaData(object = seurat_AB013, metadata = meta)
+
+Rdata_filename = paste0(fname_prefix_R, "_monocle_seurat_cds_lable_prediction.RData")
+save(cell_metadata,counts,cds,meta,original_counts,seurat_AB013,col_tab,col_cl,
+     file = Rdata_filename)
+
+###now fix cluster names 
+###change lables on UMAP
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = factor(assigned_cell_type_short,levels = cell_type_short_levels)),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_manual(name = "monocle",
+                        values=col_tab$col)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP.pdf"),
+     width = 6, height = 6)
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = factor(assigned_cell_type_short,levels = cell_type_short_levels)),
+               size=0.8, alpha = 0.7)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_manual(name = "monocle",
+                        values=col_tab$col)+
+  #facet_wrap(~replicate~factor(medium,levels = c("E8","B8","M8")))+
+  facet_grid(rows = vars(replicate), 
+           cols = vars(factor(medium, levels = c("E8","B8","M8"))))+
+  theme(
+    strip.background = element_rect(fill = NA, color = "black"), 
+    strip.text = element_text(color = "black")
+  )
+
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_samples.pdf"),
+     width = 8, height = 5)
+
+ggplot(meta, aes(x = UMAP_1_monocle, y = UMAP_2_monocle)) +
+    geom_point(aes(color = factor(assigned_cell_type,levels = cell_type_levels)),
+               size=0.8)+
+  labs(x = "UMAP 1", y = "UMAP 2", title = "Monocle clusters")+
+  scale_color_manual(name = "monocle",
+                        values=col_tab$col)
+ggsave(filename = paste0(fname_prefix_UMAP, "_", "UMAP_long.pdf"),
+     width = 6, height = 6)
+
+
+
+```
+
+
+####calculate % of cells
+
+```{r}
+meta_to_use=meta
+
+meta_to_use$ref=ifelse(meta_to_use$medium=="E8","Control","test")
+meta_to_use$testB8=ifelse(meta_to_use$medium=="B8",T,F)
+meta_to_use$testM8=ifelse(meta_to_use$medium=="M8",T,F)
+
+tot=table(meta_to_use$medium) #total of the cluster
+df=table(meta_to_use$medium,meta_to_use$monocle_clusters,meta_to_use$ref)
+df = as.data.frame(df)
+colnames(df)=c("medium","monocle_cluster","ref","freq")
+
+#mdf2 = melt(df)
+mdf2=df#11664 rows
+total=as.data.frame(tot)
+colnames(total)=c("medium","tot")
+mdf2=mdf2%>%left_join(total, by="medium")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+ctr=m%>%filter(ref=="Control")%>%rename(ctr_freq=freq, ctr_frxn=frxn,ctr_tot=tot)%>%dplyr::select(-ref,-medium)
+test=m%>%filter(ref=="test")%>%rename(test_freq=freq, test_frxn=frxn,test_tot=tot)%>%dplyr::select(-ref)
+
+ratio=ctr%>%left_join(test, by=c("monocle_cluster"))%>%
+  mutate(FC_media_vs_E8=test_freq/ctr_freq)
+
+
+# Example: cluster of interest
+#clust_id <- 1
+
+# Restrict to just E8 and B8 rows
+#tab_B8 <- table(
+ # cluster1 = meta_to_use$monocle_clusters == clust_id,
+  #medium   = factor(meta_to_use$medium, levels = c("E8","B8")))
+
+#fisher_B8 <- fisher.test(tab_B8)
+#fisher_B8
+#p_value_B8 <- fisher_B8[["p.value"]]
+
+## 2) Cluster 1 vs not, in M8 vs E8
+#tab_M8 <- table(
+ # cluster1 = meta_to_use$monocle_clusters == clust_id,
+  #medium   = factor(meta_to_use$medium, levels = c("E8","M8")))
+
+#fisher_M8 <- fisher.test(tab_M8)
+#fisher_M8
+#p_value_M8 <- fisher_M8[["p.value"]]
+
+clusters <- 1:4
+
+# Build a 2x2 for a cluster vs {E8, test_medium}
+build_tab <- function(meta, cl, test_medium) {
+  df <- meta %>% filter(medium %in% c("E8", test_medium)) %>%
+    mutate(in_cluster = monocle_clusters == cl,
+           medium = factor(medium, levels = c("E8", test_medium)))
+  tab <- table(df$in_cluster, df$medium)
+  list(df = df, tab = tab)
+}
+
+safe_fmt_p <- function(p) ifelse(p < .Machine$double.xmin, "< 2.2e-16",
+                                 formatC(p, format = "e", digits = 3))
+
+run_tests_one <- function(meta, cl, test_medium) {
+  bt <- build_tab(meta, cl, test_medium); df <- bt$df; tab <- bt$tab
+
+  # Counts for prop.test
+  succ <- c(tab["TRUE","E8"], tab["TRUE", test_medium])
+  tot  <- c(colSums(tab)[["E8"]], colSums(tab)[[test_medium]])
+
+  # 1) Fisher (exact)
+  fis <- fisher.test(tab)
+  fis_or <- unname(fis$estimate); fis_ci <- fis$conf.int
+
+  # 2) Two-proportion test
+  pt  <- prop.test(succ, tot, correct = TRUE)
+
+  # 3) Chi-square (same as prop.test under the hood for 2x2)
+  chi <- chisq.test(tab, correct = TRUE)
+
+  # 4) Logistic regression
+  glm_fit <- glm(in_cluster ~ medium, family = binomial(), data = df)
+  bn <- paste0("medium", test_medium)
+  glm_beta <- coef(glm_fit)[bn]
+  glm_or   <- unname(exp(glm_beta))
+  glm_ci   <- suppressMessages(exp(confint(glm_fit)[bn, ]))
+  glm_p    <- summary(glm_fit)$coef[bn, "Pr(>|z|)"]
+
+  tibble(
+    medium     = test_medium,
+    cluster    = cl,
+    n_E8       = tot[1], n_test = tot[2],
+    prop_E8    = succ[1]/tot[1], prop_test = succ[2]/tot[2],
+
+    fisher_p   = fis$p.value,
+    fisher_p_fmt = safe_fmt_p(fis$p.value),
+    fisher_or  = fis_or,
+    fisher_ci_low = fis_ci[1], fisher_ci_high = fis_ci[2],
+
+    prop_p     = pt$p.value,
+    prop_p_fmt = safe_fmt_p(pt$p.value),
+
+    chisq_p    = chi$p.value,
+    chisq_p_fmt= safe_fmt_p(chi$p.value),
+
+    glm_p      = glm_p,
+    glm_p_fmt  = safe_fmt_p(glm_p),
+    glm_or     = glm_or,
+    glm_ci_low = glm_ci[1], glm_ci_high = glm_ci[2]
+  )
+}
+
+# Run for B8 and M8
+res_B8 <- bind_rows(lapply(clusters, run_tests_one, meta = meta_to_use, test_medium = "B8"))
+res_M8 <- bind_rows(lapply(clusters, run_tests_one, meta = meta_to_use, test_medium = "M8"))
+
+# Add BH-adjusted p-values (per medium)
+res_B8 <- res_B8 %>%
+  mutate(fisher_padj = p.adjust(fisher_p, method = "BH"),
+         prop_padj   = p.adjust(prop_p,   method = "BH"),
+         glm_padj    = p.adjust(glm_p,    method = "BH"),
+         fisher_padj_fmt = safe_fmt_p(fisher_padj),
+         prop_padj_fmt   = safe_fmt_p(prop_padj),
+         glm_padj_fmt    = safe_fmt_p(glm_padj))
+
+res_M8 <- res_M8 %>%
+  mutate(fisher_padj = p.adjust(fisher_p, method = "BH"),
+         prop_padj   = p.adjust(prop_p,   method = "BH"),
+         glm_padj    = p.adjust(glm_p,    method = "BH"),
+         fisher_padj_fmt = safe_fmt_p(fisher_padj),
+         prop_padj_fmt   = safe_fmt_p(prop_padj),
+         glm_padj_fmt    = safe_fmt_p(glm_padj))
+
+# If you still want simple, Fisher-only tables like before:
+df_B8 <- res_B8 %>% dplyr::select(medium,monocle_cluster=cluster, pvalue = fisher_p, padj = fisher_padj, padj_show =fisher_padj_fmt,glm=glm_p,glm_adj=glm_padj,glm_adj_show=glm_padj_fmt)
+stat_filename = paste0(fname_prefix_stat, "_stat_cells_B8.csv")
+write.csv(df_B8, stat_filename, quote = F, row.names = T, sep=",")
+
+df_M8 <- res_M8 %>% dplyr::select(medium,monocle_cluster=cluster, pvalue = fisher_p, padj = fisher_padj,padj_show =fisher_padj_fmt,glm=glm_p,glm_adj=glm_padj,glm_adj_show=glm_padj_fmt)
+stat_filename = paste0(fname_prefix_stat, "_stat_cells_M8.csv")
+write.csv(df_M8, stat_filename, quote = F, row.names = T, sep=",")
+
+d=rbind(df_B8,df_M8)
+d$monocle_cluster=as.factor(d$monocle_cluster)
+
+ratio=ratio%>%right_join(d,by=c("medium","monocle_cluster"))
+ratio=ratio%>%right_join(col_tab,by=c("monocle_cluster"="monocle_clusters"))
+m=m%>%right_join(col_tab,by=c("monocle_cluster"="monocle_clusters"))
+
+stat_filename = paste0(fname_prefix_stat, "_percent_cells_media.csv")
+write.csv(m, stat_filename, quote = F, row.names = T, sep=",")
+
+stat_filename = paste0(fname_prefix_stat, "_percent_ratio_cells_media.csv")
+write.csv(ratio, stat_filename, quote = F, row.names = T, sep=",")
+
+
+ggplot(m, aes(x = factor(assigned_cell_type_short,levels = cell_type_short_levels), y = frxn, fill=factor(assigned_cell_type_short,levels = cell_type_short_levels))) + geom_bar(stat = "identity") +theme(legend.position='none')+
+  scale_fill_manual(values =c(col_cl))+
+  labs(ylab = "% gene by treatment",
+xlab = "cluster")+
+  facet_grid(~factor(medium,levels=c("E8","B8","M8")))
+  
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "percent_cells_by_gene_clust.pdf"),
+     width = 8, height = 5)
+
+####graph by gene
+
+ggplot(m, aes(x = factor(medium,levels = c("E8","B8","M8")), y = frxn, fill=factor(assigned_cell_type_short,levels = cell_type_short_levels))) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell type",values = col_cl)+
+  labs(ylab = "% gene by treatment",
+xlab = "medium")
+  
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_media_cl.pdf")
+ggsave(filename = output_file, width = 5, height = 5)
+
+
+```
+####calculate % of cells by dividing the replicates
+
+```{r}
+meta_to_use=meta
+
+meta_to_use$ref=ifelse(meta_to_use$medium=="E8","Control","test")
+meta_to_use$testB8=ifelse(meta_to_use$medium=="B8",T,F)
+meta_to_use$testM8=ifelse(meta_to_use$medium=="M8",T,F)
+
+tot_R=table(meta_to_use$sample_id) #total of the cluster
+df=table(meta_to_use$medium,meta_to_use$sample_id,meta_to_use$monocle_clusters,meta_to_use$ref,meta_to_use$replicate)
+df = as.data.frame(df)
+colnames(df)=c("medium","sample_id","monocle_cluster","ref","replicate","freq")
+
+#mdf2 = melt(df)
+mdf2=df#11664 rows
+total=as.data.frame(tot_R)
+colnames(total)=c("sample_id","tot")
+mdf2=mdf2%>%left_join(total, by="sample_id")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+m_sample_id=m
+
+ctr=m%>%filter(ref=="Control")%>%rename(ctr_freq=freq, ctr_frxn=frxn,ctr_tot=tot)%>%dplyr::select(-ref,-medium,-sample_id)
+test=m%>%filter(ref=="test")%>%rename(test_freq=freq, test_frxn=frxn,test_tot=tot)%>%dplyr::select(-ref)
+
+ratio_sample_id=ctr%>%left_join(test, by=c("monocle_cluster","replicate"))%>%
+  mutate(FC_media_vs_E8=test_freq/ctr_freq)
+
+m_sample_id=m_sample_id%>%left_join(col_tab, by=c("monocle_cluster"="monocle_clusters"))
+
+library(rstatix)
+m_sample_id %>%
+  ggplot( aes(x=factor(medium,levels=c("E8","B8","M8")), y=frxn,fill=factor(assigned_cell_type_short,levels = cell_type_short_levels))) +
+    geom_boxplot(width=0.8, linewidth = 0.3) +
+    scale_fill_manual(values = col_tab$col) +
+    geom_jitter(color="black", size=1, alpha=0.9) +
+    theme(
+      legend.position="none",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle("% in cluster by replicate") +
+    xlab("")+ylab("% cluster")+theme(
+    strip.background = element_rect(fill = NA, color = "black"),
+    strip.text = element_text(color = "black")
+  )+
+  #facet_grid(~factor(assigned_cell_type_short,levels = cell_type_short_levels))
+  facet_wrap(~ factor(assigned_cell_type_short, levels = cell_type_short_levels),
+             ncol = 2) 
+
+ggsave(filename = paste0(fname_prefix_dotplot, "_", "dutplot_clusters_percent.pdf"),
+     width = 6, height = 4)
+
+library(rstatix)
+library(emmeans)
+library(purrr)
+
+stats_t_test <- m_sample_id %>%
+  group_by(assigned_cell_type_short) %>%
+  t_test(frxn ~ medium, 
+              comparisons = list(c("E8", "B8"), c("E8", "M8"))) 
+
+
+stats_anova <- m_sample_id %>%
+  filter(medium %in% c("E8","B8","M8")) %>%
+  mutate(medium = factor(medium, levels = c("E8","B8","M8"))) %>%  # E8 = control
+  group_by(assigned_cell_type_short) %>%
+  group_modify(~{
+    d <- .x
+    fit <- lm(frxn ~ medium, data = d)
+    em  <- emmeans(fit, "medium")
+    cmp <- contrast(em, method = "trt.vs.ctrl", ref = 1)   # B8–E8, M8–E8
+    out <- as.data.frame(summary(cmp, infer = TRUE, adjust = "dunnett"))
+    # out has: contrast, estimate, SE, df, t.ratio, p.value, lower.CL, upper.CL
+    tibble(
+      contrast = out$contrast,
+      estimate = out$estimate,
+      SE       = out$SE,
+      df       = out$df,
+      t.ratio  = out$t.ratio,
+      p        = out$p.value,
+      p.adj.method = "Dunnett",
+      sig=case_when(
+        p <= 0.001 ~ "***",
+        p <= 0.01  ~ "**",
+        p <= 0.05  ~ "*",
+        TRUE       ~ "ns"
+      )
+    )
+  }) %>%
+  ungroup()
+
+stat_filename = paste0(fname_prefix_stat, "_stat_clusters_t_test.csv")
+write.csv(stats_t_test, stat_filename, quote = F, row.names = T, sep=",")
+stat_filename = paste0(fname_prefix_stat, "_stat_clusters_anova_test.csv")
+write.csv(stats_anova, stat_filename, quote = F, row.names = T, sep=",")
+
+
+```
+###cellcycle rank
+
+```{r}
+meta_to_use=meta
+
+#meta_to_use$ref=ifelse(meta_to_use$medium=="E8","Control","test")
+#meta_to_use$testB8=ifelse(meta_to_use$medium=="B8",T,F)
+#meta_to_use$testM8=ifelse(meta_to_use$medium=="M8",T,F)
+
+tot=table(meta_to_use$monocle_clusters) #total of the cluster
+df=table(meta_to_use$monocle_clusters,meta_to_use$Phase)
+df = as.data.frame(df)
+colnames(df)=c("monocle_clusters","cell_cycle_phase","freq")
+
+#mdf2 = melt(df)
+mdf2=df#11664 rows
+total=as.data.frame(tot)
+colnames(total)=c("monocle_clusters","tot")
+mdf2=mdf2%>%left_join(total, by="monocle_clusters")
+mdf2$tot = as.numeric(mdf2$tot)
+mdf2$frxn = (mdf2$freq/mdf2$tot)*100
+m=subset(mdf2,mdf2$freq!=0)
+
+m_cell_cycle=m
+m_cell_cycle=m_cell_cycle%>%right_join(col_tab, by=c("monocle_clusters"="monocle_clusters"))
+ggplot(m_cell_cycle, aes(x = factor(assigned_cell_type_short,levels = cell_type_short_levels), y = frxn, fill=cell_cycle_phase)) + geom_bar(stat = "identity") +
+  scale_fill_manual(name="cell cycle phase",values = c("#D55E00","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7"))+
+  labs(ylab = "% cell cycle phase in cluster",
+xlab = "")
+  
+output_file <- paste0(fname_prefix_mosaic, "_", "percent_cell_cycle.pdf")
+ggsave(filename = output_file, width = 5, height = 5)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,405 @@
+---
+title: "n2 AB013: DEG and cluster ED"
+author: "Elisa Balmas PhD"
+date: "2025-08-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set up environment
+
+```{r}
+library(ggplot2)
+library(SingleCellExperiment)
+library(scater)
+library(Seurat)
+library(png)
+library(cowplot)
+library(parallel)
+library(gridExtra)
+library(miloR)
+library(patchwork)
+library(monocle3)
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(viridisLite)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(MAST)
+library(geosphere)
+library(RColorBrewer)
+library(Seurat)
+library(htmlwidgets)
+library(Matrix)
+library(tidyseurat)
+library(SeuratWrappers)
+library(scMAGeCK)
+library(readxl)
+library(rCASC)
+library(deepToolsUtils)
+library(R.utils)
+library(plotly)
+
+
+library(ggplot2); library(reshape2); theme_set(theme_bw(26) + theme(panel.grid.major = element_blank(), 
+                                                                    panel.grid.minor = element_blank()) +
+                                                 theme(legend.key = element_blank()))
+update_geom_defaults("point", aes(size = 4))
+
+#setwd("/home/ebalmas/scpHUB/projects/H001AS7_iKDseq_10X_4tp_monocle/analysis_EB")
+
+# Session options
+options(stringsAsFactors = FALSE)
+set.seed(12345)
+
+# Set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+
+# Set up filename prefixes and output folders with the data
+
+dir.create(file.path("Output","Milo"))#create forders MONOCLE
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "dotplots"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "dotplots","single"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "stat"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "csv"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "UMAP"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "mosaic"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "heatmap"))
+dir.create(file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "GO"))
+
+
+#set up forder path MONOCLE
+fname_prefix_R <- file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "R_objects", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot <- file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "dotplots", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_dotplot_single <- file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "dotplots", "single", 
+                                                 format(Sys.Date(), "%y%m%d"))
+fname_prefix_csv<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "csv", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_stat<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "stat", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_UMAP<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "UMAP", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_mosaic<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "mosaic", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_heatmap<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "heatmap", 
+                               format(Sys.Date(), "%y%m%d"))
+fname_prefix_GO<-file.path("Output","Milo", format(Sys.Date(), "%y%m%d"), "GO", 
+                               format(Sys.Date(), "%y%m%d"))
+
+fname_prefix_scratch="scratch/"
+
+
+okabe_pal=c("#E69F00","#56B4E9","#009E73","#f0E442","#0072B2","#D55E00","#CC79A7","#000000")
+
+
+pal <- c("#000000","#004949","#009292","#ff6db6","#ffb6db",
+         "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+         "#920000","#924900","#db6d00","#24ff24","#ffff6d")
+```
+
+########load data
+
+```{r}
+load(paste0(getwd(),"/scratch/ANNOTATED_monocle_seurat.RData"))
+```
+
+#####convert Seurat to Milo
+
+```{r}
+rownames(meta) <- meta$cell_id
+seurat_AB013 <- AddMetaData(seurat_AB013, metadata = meta)
+
+seurat_M8=seurat_AB013[,seurat_AB013$medium=="M8"|seurat_AB013$medium=="E8"]
+seurat_B8=seurat_AB013[,seurat_AB013$medium=="B8"|seurat_AB013$medium=="E8"]
+
+#conversion SCE to Milo ----
+sce <- as.SingleCellExperiment(seurat_B8)
+milo <- Milo(sce)
+
+set.seed(1)#build milo graph
+milo <- buildGraph(milo, k = 30, d = 30)
+milo <- makeNhoods(milo, prop = 0.1, k = 30, d = 30,
+                   refined = TRUE)
+plotNhoodSizeHist(milo)
+
+milo <- countCells(milo, meta.data = data.frame(colData(milo)),#count cell per sample
+                   sample = "sample_id")
+
+head(nhoodCounts(milo))
+
+#create design table
+design_df <- data.frame(milo@colData@listData)[,c("sample_id","medium","replicate")]
+design_df <- distinct(design_df)
+rownames(design_df) <- design_df$sample_id
+design_df$medium <- factor(design_df$medium)
+
+milo <- calcNhoodDistance(milo, d = 30)
+milo_b8=milo
+
+# test for Differential Abundance per medium ----
+# formula: ~ medium
+da_results <- testNhoods(milo_b8, design = ~ medium, design.df = design_df)
+da_results <- annotateNhoods(milo_b8, da_results, coldata_col = "monocle_clusters") #annotate with cluster info
+da_results_b8=da_results
+
+ggplot(da_results_b8, aes(logFC, -log10(SpatialFDR))) +
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05), linetype="dashed", color="red") +
+  labs(title = "Differential abundance per medium",
+       x = "log2 Fold Change (mediums)",
+       y = "-log10 SpatialFDR")
+
+# beeswarm per cluster
+beeswarm_b8 <-plotDAbeeswarm(da_results_b8, group.by = "monocle_clusters", alpha = 0.1)
+beeswarm_df_b8 <- beeswarm_b8$data
+
+#conversion SCE to Milo ----
+sce <- as.SingleCellExperiment(seurat_M8)
+milo <- Milo(sce)
+
+set.seed(1)#build milo graph
+milo <- buildGraph(milo, k = 30, d = 30)
+milo <- makeNhoods(milo, prop = 0.1, k = 30, d = 30,
+                   refined = TRUE)
+plotNhoodSizeHist(milo)
+
+milo <- countCells(milo, meta.data = data.frame(colData(milo)),#count cell per sample
+                   sample = "sample_id")
+
+head(nhoodCounts(milo))
+
+#create design table
+design_df <- data.frame(milo@colData@listData)[,c("sample_id","medium","replicate")]
+design_df <- distinct(design_df)
+rownames(design_df) <- design_df$sample_id
+design_df$medium <- factor(design_df$medium)
+
+milo <- calcNhoodDistance(milo, d = 30)
+milo_m8=milo
+
+# test for Differential Abundance per medium ----
+# formula: ~ medium
+da_results <- testNhoods(milo_m8, design = ~ medium, design.df = design_df)
+da_results <- annotateNhoods(milo_m8, da_results, coldata_col = "monocle_clusters") #annotate with cluster info
+da_results_m8=da_results
+
+da_results_m8$logFC=da_results_m8$logFC*-1 #flip the sign to have M8 vs E8
+
+ggplot(da_results_m8, aes(logFC, -log10(SpatialFDR))) + #*-1 because it was plotting the opposite comparison E8vsM8 not M8 vs E8
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05), linetype="dashed", color="red") +
+  labs(title = "Differential abundance per medium",
+       x = "log2 Fold Change (mediums)",
+       y = "-log10 SpatialFDR")
+
+###make summary plots
+# beeswarm per cluster
+beeswarm_m8 <-plotDAbeeswarm(da_results_m8, group.by = "monocle_clusters", alpha = 0.1)
+beeswarm_df_m8 <- beeswarm_m8$data
+
+beeswarm_b8+beeswarm_m8
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "distribution_milo_clust_b8_m8.pdf"),
+     width = 8, height = 4)
+
+beeswarm_df_b8=beeswarm_df_b8%>%right_join(col_tab,by="monocle_clusters")
+beeswarm_df_m8=beeswarm_df_m8%>%right_join(col_tab,by="monocle_clusters")
+
+beeswarm_b8+beeswarm_m8
+ggplot(beeswarm_df_b8, aes(x = factor(assigned_cell_type_short, levels=c(col_tab$assigned_cell_type_short)), y = logFC*-1, fill = assigned_cell_type_short)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.7) +
+  theme_classic(base_size = 14) +geom_hline(yintercept=2,linetype="dashed")+geom_hline(yintercept=-2,linetype="dashed")+
+  labs(title = "Distribution of logFC per cluster B8 vs cE8",
+       x = "", y = "log2 Fold Change comparing B8 vs cE8") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_manual(values = col_cl)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "violin_distribution_clust_b8.pdf"),
+     width = 6, height = 4)
+
+ggplot(beeswarm_df_m8, aes(x = factor(assigned_cell_type_short, levels=c(col_tab$assigned_cell_type_short)), y = logFC*-1, fill = assigned_cell_type_short)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_jitter(width = 0.2, size = 1, alpha = 0.7) +
+  theme_classic(base_size = 14) +geom_hline(yintercept=2,linetype="dashed")+geom_hline(yintercept=-2,linetype="dashed")+
+  labs(title = "Distribution of logFC per cluster M8 vs cE8",
+       x = "", y = "log2 Fold Change comparing M8 vs cE8") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  scale_fill_manual(values = col_cl)
+ggsave(filename = paste0(fname_prefix_mosaic, "_", "violin_distribution_clust_m8.pdf"),
+     width = 6, height = 4)
+
+```
+
+####make summary statistics for Milo
+#m8
+
+```{r}
+library(dplyr)
+
+alpha <- 0.05
+cluster_col <- "monocle_clusters"
+da_results=da_results_m8
+da_results$logFC=da_results$logFC*-1 #flip the sign to have M8 vs E8
+# Prep
+df <- da_results %>%
+  filter(!is.na(.data[[cluster_col]])) %>%
+  mutate(
+    cluster = .data[[cluster_col]],
+    is_sig  = !is.na(SpatialFDR) & SpatialFDR < alpha
+  )
+
+# Core summary
+cluster_summary <- df %>%
+  group_by(cluster) %>%
+  summarise(
+    n_nhoods         = n(),
+    n_sig            = sum(is_sig, na.rm = TRUE),
+    frac_sig         = ifelse(n_nhoods > 0, n_sig / n_nhoods, NA_real_),
+    min_SpatialFDR   = suppressWarnings(min(SpatialFDR, na.rm = TRUE)),
+    mean_logFC       = mean(logFC, na.rm = TRUE),
+    median_logFC     = median(logFC, na.rm = TRUE),
+    mean_logFC_sig   = if (any(is_sig)) mean(logFC[is_sig], na.rm = TRUE) else NA_real_,
+    median_logFC_sig = if (any(is_sig)) median(logFC[is_sig], na.rm = TRUE) else NA_real_,
+    prop_pos_sig     = if (any(is_sig)) mean(logFC[is_sig] > 0, na.rm = TRUE) else NA_real_,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(frac_sig), desc(abs(median_logFC_sig)))
+
+# Optional: include tested level if 'coef' exists in da_results
+if ("coef" %in% names(df)) {
+  coef_lookup <- df %>%
+    group_by(cluster) %>%
+    summarise(tested_level = dplyr::first(.data[["coef"]]), .groups = "drop")
+  cluster_summary <- cluster_summary %>% left_join(coef_lookup, by = "cluster") %>%
+    mutate(
+      direction_label = dplyr::case_when(
+        is.na(median_logFC_sig) ~ NA_character_,
+        median_logFC_sig > 0 ~ paste0("enriched in ", tested_level),
+        median_logFC_sig < 0 ~ paste0("depleted in ", tested_level),
+        TRUE ~ NA_character_
+      )
+    )
+} else {
+  # Fallback labels without coef
+  cluster_summary <- cluster_summary %>%
+    mutate(
+      direction_label = dplyr::case_when(
+        is.na(median_logFC_sig) ~ NA_character_,
+        median_logFC_sig > 0 ~ "enriched (positive logFC)",
+        median_logFC_sig < 0 ~ "depleted (negative logFC)",
+        TRUE ~ NA_character_
+      )
+    )
+}
+
+# Save & view
+cluster_summary_m8=cluster_summary
+cluster_summary_m8=cluster_summary_m8%>%right_join(col_tab,by=c("cluster"="monocle_clusters"))
+cluster_summary_m8$sig=ifelse(cluster_summary_m8$median_logFC_sig>0.5&cluster_summary_m8$frac_sig>0.5|cluster_summary_m8$median_logFC_sig<0.5*-1&cluster_summary_m8$frac_sig>0.5,"yes","no")
+
+stat_filename = paste0(fname_prefix_scratch, "milo_cluster_summary_m8.csv")
+write.csv(cluster_summary_m8, stat_filename, quote = F, row.names = T, sep=",")
+
+print(cluster_summary_m8)
+message("Saved: ", normalizePath("milo_cluster_summary_m8.csv"))
+```
+####make summary statistics for Milo
+#b8
+
+```{r}
+library(dplyr)
+
+alpha <- 0.05
+cluster_col <- "monocle_clusters"
+da_results=da_results_b8
+da_results$logFC=da_results$logFC*-1 #flip the sign to have M8 vs E8
+# Prep
+df <- da_results %>%
+  filter(!is.na(.data[[cluster_col]])) %>%
+  mutate(
+    cluster = .data[[cluster_col]],
+    is_sig  = !is.na(SpatialFDR) & SpatialFDR < alpha
+  )
+
+# Core summary
+cluster_summary <- df %>%
+  group_by(cluster) %>%
+  summarise(
+    n_nhoods         = n(),
+    n_sig            = sum(is_sig, na.rm = TRUE),
+    frac_sig         = ifelse(n_nhoods > 0, n_sig / n_nhoods, NA_real_),
+    min_SpatialFDR   = suppressWarnings(min(SpatialFDR, na.rm = TRUE)),
+    mean_logFC       = mean(logFC, na.rm = TRUE),
+    median_logFC     = median(logFC, na.rm = TRUE),
+    mean_logFC_sig   = if (any(is_sig)) mean(logFC[is_sig], na.rm = TRUE) else NA_real_,
+    median_logFC_sig = if (any(is_sig)) median(logFC[is_sig], na.rm = TRUE) else NA_real_,
+    prop_pos_sig     = if (any(is_sig)) mean(logFC[is_sig] > 0, na.rm = TRUE) else NA_real_,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(frac_sig), desc(abs(median_logFC_sig)))
+
+# Optional: include tested level if 'coef' exists in da_results
+if ("coef" %in% names(df)) {
+  coef_lookup <- df %>%
+    group_by(cluster) %>%
+    summarise(tested_level = dplyr::first(.data[["coef"]]), .groups = "drop")
+  cluster_summary <- cluster_summary %>% left_join(coef_lookup, by = "cluster") %>%
+    mutate(
+      direction_label = dplyr::case_when(
+        is.na(median_logFC_sig) ~ NA_character_,
+        median_logFC_sig > 0 ~ paste0("enriched in ", tested_level),
+        median_logFC_sig < 0 ~ paste0("depleted in ", tested_level),
+        TRUE ~ NA_character_
+      )
+    )
+} else {
+  # Fallback labels without coef
+  cluster_summary <- cluster_summary %>%
+    mutate(
+      direction_label = dplyr::case_when(
+        is.na(median_logFC_sig) ~ NA_character_,
+        median_logFC_sig > 0 ~ "enriched (positive logFC)",
+        median_logFC_sig < 0 ~ "depleted (negative logFC)",
+        TRUE ~ NA_character_
+      )
+    )
+}
+
+# Save & view
+cluster_summary_b8=cluster_summary
+cluster_summary_b8=cluster_summary_b8%>%right_join(col_tab,by=c("cluster"="monocle_clusters"))
+cluster_summary_b8$sig=ifelse(cluster_summary_b8$median_logFC_sig>0.5&cluster_summary_b8$frac_sig>0.5|cluster_summary_b8$median_logFC_sig<0.5*-1&cluster_summary_b8$frac_sig>0.5,"yes","no")
+
+stat_filename = paste0(fname_prefix_scratch, "milo_cluster_summary_b8.csv")
+write.csv(cluster_summary_b8, stat_filename, quote = F, row.names = T, sep=",")
+
+print(cluster_summary_b8)
+message("Saved: ", normalizePath("milo_cluster_summary_b8.csv"))
+```
+
+
+
+
+
+
