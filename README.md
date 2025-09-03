@@ -1,6 +1,6 @@
 # Code Repository homemade_media_code_repository
 
-This GitHub page is the repository of the publication "Refined and benchmarked homemade media for cost-effective, weekend-free human pluripotent stem cell culture"; data are all available from our Zenodo repository  [10.5281/zenodo.12684584 ](https://zenodo.org/doi/10.5281/zenodo.12684584) as well as from Biostudies ([E-MTAB-14237](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237) and [add here name](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237)).
+This GitHub page is the repository of the publication "Refined and benchmarked homemade media for cost-effective, weekend-free human pluripotent stem cell culture"; data are all available from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584) as well as from Biostudies ([E-MTAB-14237](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237) and [add here name](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237)).
 
 Trimming and alignment of the Bulk RNAseq data:
 
