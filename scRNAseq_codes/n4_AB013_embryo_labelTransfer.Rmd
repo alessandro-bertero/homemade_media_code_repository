@@ -1,0 +1,230 @@
+---
+title: "n4_AB013_embryo_clusters"
+output: html_document
+date: "2025-09-04"
+---
+
+#libraries and settings
+```{r}
+#libraries
+library(dplyr)
+library(Seurat)
+library(SeuratObject)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(viridis)
+library(monocle3)
+
+theme_set(theme_bw(12) + 
+            theme(panel.grid.major = element_blank(), 
+                  panel.grid.minor = element_blank(),
+                  plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                  axis.text.x = element_text(angle=45, hjust = 1)))
+```
+
+#preimplantation embryo reference preprocessing
+```{r}
+#load downloaded data
+counts <- read.delim("/home/shared_folder/Human_preimplantation_embryo/Data/counts.txt")
+E.MTAB.3929.sdrf <- read.delim("/home/shared_folder/Human_preimplantation_embryo/Data/E-MTAB-3929.sdrf.txt")
+meta = E.MTAB.3929.sdrf %>% dplyr::select(c("Source.Name", "Characteristics.developmental.stage.", "Characteristics.inferred.lineage."))
+rownames(counts) = counts$X
+counts = counts %>% dplyr::select(meta$Source.Name)
+colnames(meta) = c("cell", "timepoint", "phenotype")
+
+#assign time labels
+meta = meta %>% mutate(timepoint = ifelse(timepoint == "embryonic day 3", "day 3",
+                                          ifelse(timepoint == "embryonic day 4", "day 4",
+                                                 ifelse(timepoint == "embryonic day 5", "day 5",
+                                                        ifelse(timepoint == "embryonic day 6", "day 6",
+                                                               ifelse(timepoint == "embryonic day 7", "day 7", ""))))))
+
+rownames(meta) = meta$cell
+genes = as.data.frame(rownames(counts))
+colnames(genes) = "gene_short_name"
+rownames(genes) = genes$gene_short_name
+
+#create seurat object
+seurat_ref = CreateSeuratObject(counts, meta.data = meta, min.features = 200)
+meta_seurat = seurat_ref@meta.data
+counts_seurat = counts %>% dplyr::select(rownames(meta_seurat))
+genes_seurat = as.data.frame(rownames(counts_seurat))
+colnames(genes_seurat) = "gene_short_name"
+rownames(genes_seurat) = genes_seurat$gene_short_name
+
+#convert to cds object
+cds_ref <- new_cell_data_set(
+  as.matrix(counts_seurat),
+  cell_metadata = meta_seurat,
+  gene_metadata = genes_seurat
+)
+
+#filter genes
+genes_AB013 = rowData(cds)$gene_short_name
+cds_subset = cds_ref[rowData(cds_ref)$gene_short_name %in% genes_AB013]
+
+#normalize
+counts <- assay(cds_subset, "counts")
+libsizes <- colSums(counts)
+size.factors <- libsizes/mean(libsizes)
+logcounts(cds_subset) <- log2(t(t(counts)/size.factors) + 1)
+
+#Seurat processing
+seurat_ref_filtered = as.Seurat(cds_subset, data = NULL)
+seurat_ref_filtered <- FindVariableFeatures(seurat_ref_filtered, selection.method = "vst", nfeatures = 8000)
+seurat_ref_filtered = ScaleData(seurat_ref_filtered)
+seurat_ref_filtered = RunPCA(seurat_ref_filtered , npcs = 30)
+
+#reference genes list
+genes_ref = seurat_ref_filtered@assays[["originalexp"]]@counts@Dimnames[[1]]
+
+```
+
+#AB013 data preprocessing 1
+```{r}
+#load AB013 processed data
+load("/home/shared_folder/250827_monocle_seurat_cds_clustered_FINAL_AB013.RData")
+
+#filter genes
+cds_subset_AB013 = cds[rowData(cds)$gene_short_name %in% genes_ref]
+
+#normalize
+counts <- assay(cds_subset_AB013, "counts")
+libsizes <- colSums(counts)
+size.factors <- libsizes/mean(libsizes)
+logcounts(cds_subset_AB013) <- log2(t(t(counts)/size.factors) + 1)
+
+#Seurat processing
+seurat_subset_AB013 <- as.Seurat(cds_subset_AB013, data = NULL)
+seurat_subset_AB013 <- FindVariableFeatures(seurat_subset_AB013, selection.method = "vst", nfeatures = 8000)
+seurat_subset_AB013 = ScaleData(seurat_subset_AB013)
+seurat_subset_AB013 = RunPCA(seurat_subset_AB013 , npcs = 30)
+```
+
+#transfer labels 1
+```{r}
+#find and transfer anchors
+anchors = FindTransferAnchors(reference = seurat_ref_filtered, query = seurat_subset_AB013, k.anchor = 15)
+predictions_AB013_timepoint <- TransferData(anchorset = anchors, 
+                                            refdata = seurat_ref_filtered$timepoint,
+                                            reference = seurat_ref_filtered, query = seurat_subset_AB013)
+
+#cumulative timepoints distribution per cluster
+meta_timepoints = as.data.frame(predictions_AB013_timepoint@meta.data)
+meta_timepoints = meta_timepoints %>% dplyr::mutate(time = ifelse(predicted.id == "day 4", 4, ifelse(predicted.id == "day 5", 5, ifelse(predicted.id == "day 6", 6, ifelse(predicted.id == "day 7", 7, 3)))))
+ggplot(meta_timepoints) + stat_ecdf(aes(x = time, color = monocle_clusters), linewidth = 1) + scale_color_manual(values = c("#000000", "#E69F00",  "#009E73", "#ff6db6"))
+ggsave("/home/shared_folder/plots_preimplantation/cumulative_timepoint_perCluster.pdf")
+
+#save output
+write.csv(meta_timepoints, "/home/shared_folder/meta_timepoints.csv")
+save(predictions_AB013_timepoint, file = "/home/shared_folder/prediction_preimplantation.RData")
+
+```
+
+#gastrula preprocessing
+```{r}
+#load downloaded data
+raw_reads <- readRDS("/home/shared_folder/Human_gastrula/Data/raw_reads.rds")
+umap <- readRDS("/home/shared_folder/Human_gastrula/Data/umap.rds")
+is_df <- readRDS("/home/shared_folder/Human_gastrula/Data/is_df.rds")
+raw_reads$n = rownames(raw_reads)
+is_df = is_df %>% dplyr::select(X)
+is_df$n = rownames(is_df)
+raw_reads = raw_reads %>% dplyr::left_join(is_df, by = "n")
+rownames(raw_reads) = raw_reads$X
+counts = as.data.frame(t(raw_reads %>% dplyr::select(-c("n", "X"))))
+meta = umap %>% dplyr::select(c("X", "cluster_id")) %>% dplyr::mutate(X = paste0("cell_", X)) %>% 
+  dplyr::filter(cluster_id %in% c("Endoderm", "Emergent Mesoderm", "Primitive Streak", "Epiblast", "Nascent Mesoderm", "Non-Neural Ectoderm"))
+colnames(meta) = c("cell", "phenotype")
+colnames(counts) = paste0("cell_", colnames(counts))
+counts = counts %>% dplyr::select(meta$cell)
+rownames(meta) = meta$cell
+genes = as.data.frame(rownames(counts))
+colnames(genes) = "gene_short_name"
+rownames(genes) = genes$gene_short_name
+
+#create Seurat object
+seurat_ref = CreateSeuratObject(counts, meta.data = meta, min.features = 200)
+meta_seurat = seurat_ref@meta.data
+counts_seurat = counts %>% dplyr::select(rownames(meta_seurat))
+genes_seurat = as.data.frame(rownames(counts_seurat))
+colnames(genes_seurat) = "gene_short_name"
+rownames(genes_seurat) = genes_seurat$gene_short_name
+
+#convert to cds object
+cds_ref <- new_cell_data_set(
+  as.matrix(counts_seurat),
+  cell_metadata = meta_seurat,
+  gene_metadata = genes_seurat
+)
+
+#filter genes
+genes_AB013 = rowData(cds)$gene_short_name
+cds_subset = cds_ref[rowData(cds_ref)$gene_short_name %in% genes_AB013]
+
+#normalize
+counts <- assay(cds_subset, "counts")
+libsizes <- colSums(counts)
+size.factors <- libsizes/mean(libsizes)
+logcounts(cds_subset) <- log2(t(t(counts)/size.factors) + 1)
+
+#Seurat processing
+seurat_ref_filtered = as.Seurat(cds_subset, data = NULL)
+seurat_ref_filtered <- FindVariableFeatures(seurat_ref_filtered, selection.method = "vst", nfeatures = 8000)
+seurat_ref_filtered = ScaleData(seurat_ref_filtered)
+seurat_ref_filtered = RunPCA(seurat_ref_filtered , npcs = 30)
+
+#reference genes list
+genes_ref = seurat_ref_filtered@assays[["originalexp"]]@counts@Dimnames[[1]]
+```
+
+#AB013 data processing 2
+```{r}
+#load AB013 processed data
+load("/home/shared_folder/250827_monocle_seurat_cds_clustered_FINAL_AB013.RData")
+
+#filter genes
+cds_subset_AB013 = cds[rowData(cds)$gene_short_name %in% genes_ref]
+
+#normalize
+counts <- assay(cds_subset_AB013, "counts")
+libsizes <- colSums(counts)
+size.factors <- libsizes/mean(libsizes)
+logcounts(cds_subset_AB013) <- log2(t(t(counts)/size.factors) + 1)
+
+#Seurat processing
+seurat_subset_AB013 <- as.Seurat(cds_subset_AB013, data = NULL)
+seurat_subset_AB013 <- FindVariableFeatures(seurat_subset_AB013, selection.method = "vst", nfeatures = 8000)
+seurat_subset_AB013 = ScaleData(seurat_subset_AB013)
+seurat_subset_AB013 = RunPCA(seurat_subset_AB013 , npcs = 30)
+```
+
+#transfer labels 2
+```{r}
+#find and transfer anchors
+anchors = FindTransferAnchors(reference = seurat_ref_filtered, query = seurat_subset_AB013, k.anchor = 15)
+predictions_AB013_phenotype <- TransferData(anchorset = anchors, 
+                                  refdata = seurat_ref_filtered$phenotype,
+                                  reference = seurat_ref_filtered, query = seurat_subset_AB013)
+
+#identity score plots
+meta_phenotype = as.data.frame(predictions_AB013_timepoint@meta.data)
+scores = as.data.frame(t(predictions_AB013_phenotype@assays[["prediction.score.id"]]@data))
+colnames(scores) = c("endoderm", "primitive_streak", "emergent_mesoderm", "epiblast", "nascent_mesoderm", "non_neural_ectoderm")
+scores$libID = rownames(scores)
+meta_phenotype = meta_phenotype %>% dplyr::left_join(scores)
+ggplot(meta_phenotype) + geom_point(aes(x = UMAP_1_monocle, y = UMAP_2_monocle, color = nascent_mesoderm)) + scale_color_viridis(option = "cividis")
+ggsave("/home/shared_folder/plots_gastrula/nascent_mesoderm_UMAP.pdf")
+
+ggplot(meta_phenotype) + geom_point(aes(x = UMAP_1_monocle, y = UMAP_2_monocle, color = primitive_streak)) + scale_color_viridis(option = "cividis")
+ggsave("/home/shared_folder/plots_gastrula/primitive_streak_UMAP.pdf")
+
+ggplot(meta_phenotype) + geom_point(aes(x = UMAP_1_monocle, y = UMAP_2_monocle, color = epiblast)) + scale_color_viridis(option = "cividis")
+ggsave("/home/shared_folder/plots_gastrula/epiblast_UMAP.pdf")
+
+#save output
+write.csv(meta_phenotype, "/home/shared_folder/meta_phenotypes.csv")
+save(predictions_AB013_timepoint, file = "/home/shared_folder/prediction_gastrula.RData")
+```
+
