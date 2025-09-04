@@ -38,14 +38,11 @@ Analysis (media_analysis_paper.Rdm) is performed according to the following  ste
 * QC analysis with RNAseqQC
 * Differential gene expression analysis with limma, glimma and edgeR
 * Data normalization (TPM) and correction
-* WGCNA analysis on normalized and corrected counts
-* Gene ontology analysis on the overrepresented modules among significative genes (topGO)
-* Gene set enrichment analysis on biological process and representation of developmental terms
 * Gene set enrichment analysis on kegg pathways and representation of pluripotency signalling pathways
 
 scRNAseq data analysis:
 
-Data can be downloaded as row data or processed from our BioStudies repository [add name here](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237). Alternatively, processed data and RData are available to download from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584). Download the "scratch" folder in the repository and place it in the same directory as the scRNAseq codes available here (3 R markdown files numbered from 1 to 3). Then run the codes within our Docker environment hedgelab/rstudio-hedgelab (as described earlier).
+Data can be downloaded as row data or processed from our BioStudies repository [add name here](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237). Alternatively, processed data and RData are available to download from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584). Download the "scratch" folder in the repository and place it in the same directory as the scRNAseq codes available here (3 R markdown files numbered from 1 to 3). Then run the codes within our Docker environment hedgelab/rstudio-hedgelab (as described earlier). The input data for the script n4_AB013_embryo_labelTransfer.Rmd can be downloaded from ArrayExpress at the following accession numbers: E-MTAB-3929 (human preimplantation embryo) and E-MTAB-9388 (human gastrula)
 
 Karyotyping data analysis:
 
