@@ -43,24 +43,3 @@ Analysis (media_analysis_paper.Rdm) is performed according to the following  ste
 * Gene set enrichment analysis on biological process and representation of developmental terms
 * Gene set enrichment analysis on kegg pathways and representation of pluripotency signalling pathways
 
-scRNAseq data analysis:
-
-Data can be downloaded as row data or processed from our BioStudies repository [add name here](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237). Alternatively, processed data and RData are available to download from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584). Download the "scratch" folder in the repository and place it in the same directory as the scRNAseq codes available here (3 R markdown files numbered from 1 to 3). Then run the codes within our Docker environment hedgelab/rstudio-hedgelab (as described earlier).
-
-Karyotyping data analysis:
-
-karyotype_cnv_filtering.R is an R script that parses the .xls file exported from GenomeStudio and allows for filtering the detected CNVs for the CNV size and the confidence value. XLS and final files, as well as a step-by-step SOP can be downloaded from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584).
-
-The script requires dplyr and xml2 packages.
-
-Install them by running these lines in Rstudio or in R:
-install.packages("devtools")
-library(devtools)
-install_version("dplyr", version = "1.1.4")
-install_version("xml2", version = "1.3.8")
-
-Alternatively, run the script within our Docker environment hedgelab/rstudio-hedgelab (as described earlier)
-
-Adjust the name of the file in line number 10 and if you want to change the default parameters, change the numbers in the lines 5-7
-
-
