@@ -49,7 +49,7 @@ Data can be downloaded as row data or processed from our BioStudies repository [
 
 Karyotyping data analysis:
 
-R script that parses the .xls file exported from GenomeStudio and allows for filtering the detected CNVs for the CNV size and the confidence value. XLS and final files, as well as a step-by-step SOP can be downloaded from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584).
+karyotype_cnv_filtering.R is an R script that parses the .xls file exported from GenomeStudio and allows for filtering the detected CNVs for the CNV size and the confidence value. XLS and final files, as well as a step-by-step SOP can be downloaded from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584).
 
 The script requires dplyr and xml2 packages.
 
