@@ -9,7 +9,7 @@ trimming.sh performs the trimming with TrimGalore, alignment.sh performs the ali
 
 Bulk RNAseq data analysis:
 
-The analysis can be performed within a Docker environment, which uses RStudio Server (??2023.12.1 Build 402 ìOcean stormî release). The Docker image can be downloaded from our repository hedgelab/rstudio-hedgelab (rstudio password is ìrstudioî). 
+The analysis can be performed within a Docker environment, which uses RStudio Server (??2023.12.1 Build 402 ìOcean stormî release). The Docker image can be downloaded from our repository hedgelab/rstudio-hedgelab (rstudio password is rstudio). 
 
 Follow these steps to pull and run the Docker image below from the terminal:
 
@@ -22,7 +22,7 @@ Follow these steps to pull and run the Docker image below from the terminal:
 
     docker exec -idt NAME_CONTAINER rstudio-server start
 
-Replace <your_password> with your desired password, if it is omitted the password will be ìrstudioî. This command maps port 8787 on your host machine to port 8787 in the container, allowing you to access RStudio via your browser at http://localhost:8787. The USER=rstudio part ensures you'll log in as the rstudio user, and the PASSWORD variable sets the password you'll use to log in.
+Replace <your_password> with your desired password, if it is omitted the password will be "rstudio". This command maps port 8787 on your host machine to port 8787 in the container, allowing you to access RStudio via your browser at http://localhost:8787. The USER=rstudio part ensures you'll log in as the rstudio user, and the PASSWORD variable sets the password you'll use to log in.
 Then use Rstudio through a browser.
 
 Input data can be downloaded from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584)
