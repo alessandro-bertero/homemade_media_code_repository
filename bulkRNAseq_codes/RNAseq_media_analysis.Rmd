@@ -1,0 +1,360 @@
+---
+title: "EB002AS1_bulk_EBalmas_SBianchi"
+output: html_document
+---
+#environment
+```{r}
+#libraries
+library(tidyr)
+library(stringr)
+library(grid)
+library(viridis)
+library(ggthemes)
+library(dplyr)
+library(tidyverse)
+library(ggsignif)
+library(umap)
+library(heatmap3)
+library(plyr)
+library(edgeR)
+library(compareGroups)
+library(dbscan)
+library(reshape2)
+library(scran)
+library(Matrix)
+library(fgsea)
+library(msigdbr)
+library(RNAseqQC)
+library(DESeq2)
+library(ensembldb)
+library(tibble)
+library(purrr)
+library(magrittr)
+library(ggplotify)
+library(limma)
+library(Glimma)
+library(topGO)
+library(org.Hs.eg.db)
+library(ggrepel)
+library(igraph)
+library(readxl)
+library(clusterProfiler)
+library(enrichplot)
+library(SeuratObject)
+library(Seurat)
+library(pathview)
+library(pheatmap)
+library(ggplot2)
+library(reshape2)
+library(WGCNA)
+
+update_geom_defaults("point", aes(size = 4))
+hs = org.Hs.eg.db
+
+#functions
+cal_z_score = function(x){(x - mean(x)) / sd(x)}
+
+#session options
+options(stringsAsFactors = FALSE)
+
+#set up the ggplot default params
+theme_set(theme_bw(12) + 
+          theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(),
+                plot.title = element_text(size=15, face="bold", margin = margin(10,0,10,0)),
+                axis.text.x = element_text(angle=45, hjust = 1)))
+
+#set up filename prefixes and output folders with the data
+dir.create("Output")
+dir.create(file.path("Output", "paper"))
+dir.create(file.path("Output", "paper", format(Sys.Date(), "%y%m%d")))
+dir.create(file.path("Output", "paper", format(Sys.Date(), "%y%m%d"), "R_objects"))
+dir.create(file.path("Output", "paper", format(Sys.Date(), "%y%m%d"), "QC_plots"))
+dir.create(file.path("Output", "paper", format(Sys.Date(), "%y%m%d"), "plots"))
+dir.create(file.path("Output", "paper", format(Sys.Date(), "%y%m%d"), "pathways"))
+
+fname_prefix_R = file.path("Output","paper", format(Sys.Date(), "%y%m%d"), "R_objects", format(Sys.Date(), "%y%m%d"))
+fname_prefix_QC = file.path("Output","paper", format(Sys.Date(), "%y%m%d"), "QC_plots", format(Sys.Date(), "%y%m%d"))
+fname_prefix_plots = file.path("Output","paper", format(Sys.Date(), "%y%m%d"), "plots", format(Sys.Date(), "%y%m%d"))
+fname_prefix_pathways = file.path("Output","paper", format(Sys.Date(), "%y%m%d"), "pathways", format(Sys.Date(), "%y%m%d"))
+
+#colors
+col_B8 = "#D81B60"
+col_M8 = "#1E88E5"
+col_E8 = "#FFC107"
+colors = c(col_B8, col_E8, col_M8)
+```
+
+#import files: counts_ids, gene_info_filtered, meta
+```{r}
+gene_info_filtered <- read.csv("/home/shared_folder/media/gene_info_filtered.csv", row.names = 1)
+counts_ids <- read.csv("/home/shared_folder/media/counts_ids.csv", row.names = 1)
+meta <- read.csv("/home/shared_folder/media/meta.csv", row.names = 1)
+
+```
+
+
+#mitochondrial genes
+```{r}
+#mt genes
+mt_genes = c()
+for(i in gene_info_filtered$gene_name) {x =  grepl("MT-", i); if(x == TRUE) {mt_genes = append(mt_genes, i)}}
+mt_counts = counts_ids
+mt_counts$gene_ID = rownames(mt_counts)
+mt_counts = mt_counts %>% left_join(gene_info_filtered, by = "gene_ID")
+mt_counts = mt_counts %>% dplyr :: filter(gene_name %in% mt_genes)
+mt_counts = mt_counts %>% dplyr :: select(- c(gene_name, gene_type, gene_ID))
+mt_counts = as.matrix(mt_counts)
+
+mt_counts_sum = as.data.frame(colSums(mt_counts))
+colnames(mt_counts_sum) = "mt_genes_sum"
+mt_counts_sum$sample_ID = rownames(mt_counts_sum)
+meta = meta  %>% left_join(mt_counts_sum, by = "sample_ID")
+
+counts_names_matrix = as.matrix(counts_ids)
+all_counts_sum = as.data.frame(colSums(counts_names_matrix))
+colnames(all_counts_sum) = "all_genes_sum"
+all_counts_sum$sample_ID = rownames(all_counts_sum)
+meta = meta  %>% left_join(all_counts_sum, by = "sample_ID")
+
+meta = meta %>% dplyr :: mutate(mt_perc = mt_genes_sum/all_genes_sum*100)
+ggplot(meta, aes(x = sample_ID, y = mt_perc, fill = medium)) + geom_bar(stat = "identity") + scale_fill_manual(values = colors)
+ggsave(filename = paste0(fname_prefix_QC, "_mt_perc.pdf"),
+       width = 5, height = 4)
+```
+
+#QC
+```{r}
+#create DESeqDataSet 
+dds = make_dds(counts = counts_ids, metadata = meta, ah_record = "AH89426")
+
+#Total sample counts
+plot_total_counts(dds)
+ggsave(filename = paste0(fname_prefix_QC, "_counts_distribution.pdf"),
+       width = 5, height = 4)
+
+#Library complexity
+plot_library_complexity(dds)
+ggsave(filename = paste0(fname_prefix_QC, "_library_complexity.pdf"),
+       width = 5, height = 4)
+
+#Gene detection
+plot_gene_detection(dds)
+ggsave(filename = paste0(fname_prefix_QC, "_gene_detection.pdf"),
+       width = 5, height = 4)
+
+#Gene biotypes
+plot_biotypes(dds)
+ggsave(filename = paste0(fname_prefix_QC, "_biotypes.pdf"),
+       width = 5, height = 4)
+
+#Variance stabilization
+vsd = vst(dds)
+mean_sd_plot(vsd)
+ggsave(filename = paste0(fname_prefix_QC, "_variance.pdf"),
+       width = 5, height = 4)
+
+#Chromosomal expression
+chromosomes = c(1:22, "X", "Y", "MT")
+for(i in chromosomes) {as.ggplot(plot_chromosome(vsd, as.character(i))); ggsave(filename = paste0(fname_prefix_QC, "_ch", as.character(i), ".pdf"),
+       width = 5, height = 4)}
+
+#Replicate variability
+plot_ma = plot_sample_MAs(vsd, group = "medium")
+for(i in 1:length(plot_ma)) {as.ggplot(plot_ma[[i]]); ggsave(filename = paste0(fname_prefix_QC, plot_ma[[i]][["labels"]][["title"]], ".pdf"),
+       width = 5, height = 4)}
+
+#Batch effect
+vsd2 = vsd
+assay(vsd2) = limma::removeBatchEffect(assay(vsd2), vsd2$rep)
+
+#Clustering
+as.ggplot(plot_sample_clustering(vsd, n_feats = 1000, anno_vars = c("medium", "rep"), distance = "pearson")) + ggtitle(" Pearson correlation") + theme(plot.title = element_text(face = "bold"))
+ggsave(filename = paste0(fname_prefix_QC, "_clustering1.pdf"),
+       width = 6, height = 4)
+as.ggplot(plot_sample_clustering(vsd2, n_feats = 1000, anno_vars = c("medium", "rep"), distance = "pearson")) + ggtitle(" Pearson correlation") + theme(plot.title = element_text(face = "bold"))
+ggsave(filename = paste0(fname_prefix_QC, "_clustering2.pdf"),
+       width = 6, height = 4)
+```
+
+#PCA
+```{r}
+#pca before batch correction
+plot_pca_scatters(vsd, n_PCs = 9,  color_by = "medium", shape_by = "rep")
+ggsave(filename = paste0(fname_prefix_QC, "_PCA_1to9.pdf"),
+       width = 18, height = 12)
+pca_res1 = plot_pca(vsd, show_plot = FALSE, n_feats = 1000)
+for(i in 1:9) {plot_loadings(pca_res1, PC = i, annotate_top_n = 5); ggsave(filename = paste0(fname_prefix_QC, "_pca_top5_", as.character(i), ".pdf"), width = 5, height = 4)}
+for(i in 1:9) {plot_loadings(pca_res1, PC = i, color_by = "gene_biotype", show_plot = F)$plot +
+    theme(legend.position = "bottom"); ggsave(filename = paste0(fname_prefix_QC, "_pca_biotypes_", as.character(i), ".pdf"), width = 5, height = 4)}
+for(i in 1:9) {plot_loadings(pca_res1, PC = i, color_by = "gc_content"); ggsave(filename = paste0(fname_prefix_QC, "_pca_gc_", as.character(i), ".pdf"), width = 5, height = 4)}
+pca_var1 = as.data.frame(pca_res1[["var_exp"]])
+colnames(pca_var1) = "pca_var"
+pca_var1$pca = c(1:9)
+ggplot(pca_var1, aes(x = pca, y = pca_var)) + geom_point()
+ggsave(filename = paste0(fname_prefix_QC, "_scree_plot1.pdf"),
+       width = 5, height = 4)
+pca1 = pca_res1[["data"]]
+pca1$replicate = pca1$rep
+ggplot(pca1, aes(x = PC1, y = PC2, shape = replicate)) + geom_point(aes(colour = medium), size = 4) + scale_color_manual(values = colors) +
+  xlab(paste0("PC1 ", "60,43", " % variability")) + ylab(paste0("PC2 ", "17,33", " % variability")) + geom_point(colour = "grey90", size = 1.5) + ggtitle("PCA for the 1000 most variable genes")
+ggsave(filename = paste0(fname_prefix_QC, "_PCA_1_2.pdf"),
+       width = 7, height = 4)
+
+#pca after batch correction
+plot_pca_scatters(vsd2, n_PCs = 9,  color_by = "medium", shape_by = "rep")
+ggsave(filename = paste0(fname_prefix_QC, "_PCA_1to9_corr.pdf"),
+       width = 18, height = 12)
+pca_res2 = plot_pca(vsd2, show_plot = FALSE, n_feats = 1000)
+for(i in 1:9) {plot_loadings(pca_res2, PC = i, annotate_top_n = 5); ggsave(filename = paste0(fname_prefix_QC, "_pca_top5_", as.character(i), "corr.pdf"), width = 5, height = 4)}
+for(i in 1:9) {plot_loadings(pca_res2, PC = i, color_by = "gene_biotype", show_plot = F)$plot +
+    theme(legend.position = "bottom"); ggsave(filename = paste0(fname_prefix_QC, "_pca_biotypes_", as.character(i), "corr.pdf"), width = 5, height = 4)}
+for(i in 1:9) {plot_loadings(pca_res2, PC = i, color_by = "gc_content"); ggsave(filename = paste0(fname_prefix_QC, "_pca_gc_", as.character(i), "corr.pdf"), width = 5, height = 4)}
+pca_var2 = as.data.frame(pca_res2[["var_exp"]])
+colnames(pca_var2) = "pca_var"
+pca_var2$pca = c(1:9)
+ggplot(pca_var2, aes(x = pca, y = pca_var)) + geom_point()
+ggsave(filename = paste0(fname_prefix_QC, "_scree_plot2.pdf"),
+       width = 5, height = 4)
+pca2 = pca_res2[["data"]]
+pca2$replicate = pca1$rep
+ggplot(pca2, aes(x = PC1, y = PC2, shape = replicate)) + geom_point(aes(colour = medium), size = 4) + scale_color_manual(values = colors) +
+  xlab(paste0("PC1 ", "71,71", " % variability")) + ylab(paste0("PC2 ", "14,38", " % variability")) + geom_point(colour = "grey90", size = 1.5) + ggtitle("PCA for the 1000 most variable genes")
+ggsave(filename = paste0(fname_prefix_QC, "_PCA_1_2_corr.pdf"),
+       width = 7, height = 4)
+```
+
+#limma
+```{r}
+#differential expression analysis
+media = meta$medium
+rep = meta$rep
+design = model.matrix(~0+media)
+contrasts = makeContrasts(E8vsB8 = mediaE8 - mediaB8, B8vsM8 = mediaB8 - mediaM8, M8vsE8 = mediaM8 - mediaE8, levels = colnames(design))
+v = voom(counts_ids, design, plot = TRUE)
+v[["E"]] = limma::removeBatchEffect(v[["E"]], rep)
+l = lmFit(v, design)
+vfit = contrasts.fit(l, contrasts = contrasts)
+efit = eBayes(vfit)
+plotSA(efit)
+
+diff_E8vsB8 = topTreat(efit, coef=1, n = Inf)
+diff_B8vsM8 = topTreat(efit, coef=2, n = Inf)
+diff_M8vsE8 = topTreat(efit, coef=3, n = Inf)
+
+#E8 vs B8
+diff_E8vsB8$gene_ID = rownames(diff_E8vsB8)
+diff_E8vsB8 = diff_E8vsB8 %>% left_join(gene_info_filtered, by = "gene_ID")
+
+#M8 vs E8
+diff_M8vsE8$gene_ID = rownames(diff_M8vsE8)
+diff_M8vsE8 = diff_M8vsE8 %>% left_join(gene_info_filtered, by = "gene_ID")
+
+
+diff_E8vsB8 = diff_E8vsB8 %>% dplyr::mutate(col_to_plot = ifelse(adj.P.Val < 0.05 & logFC > 2, "E8", ifelse(adj.P.Val < 0.05 & logFC < -2, "B8", "other"))) %>%
+                                              dplyr::mutate(genes_to_plot = ifelse(col_to_plot != "other", gene_name, ""))
+ggplot(diff_E8vsB8, aes(x = -logFC, y = -log10(adj.P.Val))) + geom_point(aes(colour = col_to_plot, size = 0.5, alpha = 0.5)) + scale_colour_manual(values = c(col_B8, col_E8, "grey")) +
+  ggrepel::geom_text_repel(aes(label = genes_to_plot), max.overlaps = 30,	size = 2, hjust = 1.2) + ggtitle("E8 vs B8") +
+  scale_y_continuous(limits = c(0, 5.5)) + scale_x_continuous(limits = c(-5, 5)) + geom_hline(aes(yintercept = -log10(0.05)), linetype = "dashed") +
+  geom_vline(aes(xintercept = -2), linetype = "dashed") + geom_vline(aes(xintercept = 2), linetype = "dashed")
+ggsave(filename = paste0(fname_prefix_plots, "_E8vsB8.pdf"),
+       width = 10, height = 8)
+
+
+
+diff_M8vsE8 = diff_M8vsE8 %>% dplyr::mutate(col_to_plot = ifelse(adj.P.Val < 0.05 & logFC > 2, "M8", ifelse(adj.P.Val < 0.05 & logFC < -2, "E8", "other"))) %>%
+                                              dplyr::mutate(genes_to_plot = ifelse(col_to_plot != "other", gene_name, ""))
+ggplot(diff_M8vsE8, aes(x = logFC, y = -log10(adj.P.Val))) + geom_point(aes(colour = col_to_plot, size = 0.5, alpha = 0.5)) + scale_colour_manual(values = c(col_E8, col_M8, "grey")) +
+   ggrepel::geom_text_repel(aes(label = genes_to_plot), max.overlaps = 30,	size = 2, hjust = 1.2) + ggtitle("M8 vs E8")  +
+  scale_y_continuous(limits = c(0, 5.5)) + scale_x_continuous(limits = c(-5, 5)) + geom_hline(aes(yintercept = -log10(0.05)), linetype = "dashed") +
+  geom_vline(aes(xintercept = -2), linetype = "dashed") + geom_vline(aes(xintercept = 2), linetype = "dashed")
+ggsave(filename = paste0(fname_prefix_plots, "_M8vsE8.pdf"),
+       width = 10, height = 8)
+
+
+```
+
+#normalization
+```{r}
+#counts
+#upload gene_length file
+gene_length <- read.csv("gene_length.csv", row.names = 1)
+counts_tpm = as.data.frame(ADImpute::NormalizeTPM(as.matrix(counts_ids), sce = NULL, log = FALSE, tr_length = gene_length, scale = 1))
+counts_tpm = as.data.frame(limma::removeBatchEffect(counts_tpm, meta$rep))
+counts_tpm$gene_ID = rownames(counts_tpm)
+counts_tpm = counts_tpm %>% dplyr::left_join(gene_info_filtered, by = "gene_ID")
+melt_tpm = melt(counts_tpm)
+```
+
+#pluripotency markers
+```{r}
+#pluripotency markers
+markers = c("SOX2", "POU5F1", "NANOG")
+melt_plur = melt_tpm %>% dplyr::filter(gene_name %in% markers)
+order = c()
+for(i in melt_plur$medium){if(i == "E8"){order = append(order, "a")} else if(i == "M8"){order = append(order, "b")} else if(i == "B8"){order = append(order, "c")}}
+melt_plur$order = order
+ggplot(melt_plur) + geom_boxplot(aes(x = order, y = value, fill = medium)) + facet_wrap(~ gene_name) + scale_fill_manual(values = c(col_B8, col_E8, col_M8))
+ggsave(filename = paste0(fname_prefix_plots, "_boxplot_pluripotency.pdf"),
+       width = 12, height = 4)
+```
+
+#pluripotency pathways
+```{r}
+#Kegg
+kegg_organism = "hsa"
+set.seed(1234)
+
+#E8 vs B8
+E8vsB8 = diff_E8vsB8 %>% dplyr::filter(adj.P.Val < 0.05)
+genesE8vsB8 = E8vsB8$logFC
+names(genesE8vsB8) = E8vsB8$gene_ID
+
+ids = bitr(names(genesE8vsB8), fromType = "ENSEMBL", toType = "ENTREZID", OrgDb=organism)
+dedup_ids = ids[!duplicated(ids[c("ENSEMBL")]),]
+E8vsB82 = E8vsB8[E8vsB8$gene_ID %in% dedup_ids$ENSEMBL,]
+E8vsB82$K_id = dedup_ids$ENTREZID
+keggE8vsB8 = E8vsB82$logFC * (-1)
+names(keggE8vsB8) = E8vsB82$K_id
+keggE8vsB8 = na.omit(keggE8vsB8)
+keggE8vsB8 = sort(keggE8vsB8, decreasing = TRUE)
+kkE8vsB8 <- gseKEGG(geneList = keggE8vsB8,
+               organism = kegg_organism,
+               minGSSize = 3,
+               maxGSSize = 800,
+               pvalueCutoff = 1,
+               pAdjustMethod = "BH",
+               keyType = "kegg")
+reskE8vsB8 = kkE8vsB8@result
+reskE8vsB8$n = c(1:length(rownames(reskE8vsB8)))
+
+#M8 vs E8
+M8vsE8 = diff_M8vsE8 %>% dplyr::filter(adj.P.Val < 0.05)
+genesM8vsE8 = M8vsE8$logFC
+names(genesM8vsE8) = M8vsE8$gene_ID
+
+ids = bitr(names(genesM8vsE8), fromType = "ENSEMBL", toType = "ENTREZID", OrgDb=organism)
+dedup_ids = ids[!duplicated(ids[c("ENSEMBL")]),]
+M8vsE82 = M8vsE8[M8vsE8$gene_ID %in% dedup_ids$ENSEMBL,]
+M8vsE82$K_id = dedup_ids$ENTREZID
+keggM8vsE8 = M8vsE82$logFC
+names(keggM8vsE8) = M8vsE82$K_id
+keggM8vsE8 = na.omit(keggM8vsE8)
+keggM8vsE8 = sort(keggM8vsE8, decreasing = TRUE)
+kkM8vsE8 <- gseKEGG(geneList = keggM8vsE8,
+               organism = kegg_organism,
+               minGSSize = 3,
+               maxGSSize = 800,
+               pvalueCutoff = 1,
+               pAdjustMethod = "BH",
+               keyType = "kegg")
+reskM8vsE8 = kkM8vsE8@result
+reskM8vsE8$n = c(1:length(rownames(reskM8vsE8)))
+
+
+#pluripotency kegg pathway
+pluripotencyID = "hsa04550"
+pathB8vsE8 = pathview(gene.data = keggE8vsB8, pathway.id = pluripotencyID, species = kegg_organism, low = list(gene = col_E8, cpd = col_E8), high = list(gene = col_B8, cpd = col_B8))
+pathM8vsE8 = pathview(gene.data = keggM8vsE8, pathway.id = pluripotencyID, species = kegg_organism, low = list(gene = col_E8, cpd = col_E8), high = list(gene = col_M8, cpd = col_M8))
+
+```
