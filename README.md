@@ -1,6 +1,6 @@
 # Code Repository homemade_media_code_repository
 
-This GitHub page is the repository of the publication "Refined and benchmarked homemade media for cost-effective, weekend-free human pluripotent stem cell culture"; data are all available from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584) as well as from Biostudies ([E-MTAB-14237](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237) and [add here name](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237)).
+This GitHub page is the repository of the publication "Refined and benchmarked homemade media for cost-effective, weekend-free human pluripotent stem cell culture"; data are all available from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584) as well as from Biostudies ([E-MTAB-14237](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237) and [E-MTAB-15570](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-15570)).
 
 Trimming and alignment of the Bulk RNAseq data:
 
@@ -42,7 +42,7 @@ Analysis (media_analysis_paper.Rdm) is performed according to the following  ste
 
 scRNAseq data analysis:
 
-Data can be downloaded as row data or processed from our BioStudies repository [add name here](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-14237). Alternatively, processed data and RData are available to download from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584). Download the "scratch" folder in the repository and place it in the same directory as the scRNAseq codes available here (3 R markdown files numbered from 1 to 3). Then run the codes within our Docker environment hedgelab/rstudio-hedgelab (as described earlier). The input data for the script n4_AB013_embryo_labelTransfer.Rmd can be downloaded from ArrayExpress at the following accession numbers: E-MTAB-3929 (human preimplantation embryo) and E-MTAB-9388 (human gastrula)
+Data can be downloaded as row data or processed from our BioStudies repository [E-MTAB-15570](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-15570). Alternatively, processed data and RData are available to download from our [Zenodo repository](https://zenodo.org/doi/10.5281/zenodo.12684584). Download the "scratch" folder in the repository and place it in the same directory as the scRNAseq codes available here (3 R markdown files numbered from 1 to 3). Then run the codes within our Docker environment hedgelab/rstudio-hedgelab (as described earlier). The input data for the script n4_AB013_embryo_labelTransfer.Rmd can be downloaded from ArrayExpress at the following accession numbers: E-MTAB-3929 (human preimplantation embryo) and E-MTAB-9388 (human gastrula)
 
 Karyotyping data analysis:
 
