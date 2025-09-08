@@ -12,7 +12,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Set up environment
 
 ```{r}
-#library(monocle3)
 library(mixtools)
 library(quantmod)
 library(tidyr)
@@ -37,15 +36,9 @@ library(htmlwidgets)
 library(Matrix)
 library(tidyseurat)
 library(SeuratWrappers)
-#library(scMAGeCK)
 library(readxl)
 library(SparseArray)
 library(Seurat)
-#library(rCASC)
-#library(deepToolsUtils)
-#library(R.utils)
-library(sceptre)
-library(sceptredata)
 library(monocle3)
 
 
