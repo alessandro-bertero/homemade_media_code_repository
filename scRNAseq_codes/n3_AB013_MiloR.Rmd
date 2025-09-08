@@ -48,8 +48,6 @@ library(tidyseurat)
 library(SeuratWrappers)
 library(scMAGeCK)
 library(readxl)
-library(rCASC)
-library(deepToolsUtils)
 library(R.utils)
 library(plotly)
 
