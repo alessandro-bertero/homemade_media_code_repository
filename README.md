@@ -18,7 +18,7 @@ Follow these steps to pull and run the Docker image below from the terminal:
     docker pull hedgelab/rstudio-hedgelab
 
     docker run -d -itv /the/folder/you/want/to/share:/scratch --privileged=true -p 8787:8787 \\
-    -e PASSWORD=<your_password> -e USER=rstudio --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:iPS2seq
+    -e PASSWORD=<your_password> -e USER=rstudio --name=NAME_CONTAINER hedgelab/rstudio-hedgelab:media
 
     docker exec -idt NAME_CONTAINER rstudio-server start
 
